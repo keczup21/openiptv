@@ -1,6 +1,6 @@
 {
   "id": "pl.openiptv.player",
-  "version": "1.21.2",
+  "version": "1.21.3",
   "vendor": "OpenIPTV",
   "type": "web",
   "main": "index.html",

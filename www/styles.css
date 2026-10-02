@@ -244,6 +244,8 @@ aside {
   max-width: 100%;
 }
 
+/* Gwiazdka ulubionych na kafelku kanału. Przycisk archiwum („⏪”) zniknął
+   z listy — do nagrań wchodzi się z menu opcji kanału i z programu TV. */
 .favorite-button {
   width: 54px;
   padding: 8px;
@@ -251,15 +253,6 @@ aside {
   font-size: 28px;
   background: transparent;
   border-radius: 10px;
-}
-
-.archive-button {
-  padding: 10px 16px;
-  color: var(--accent);
-  font-size: 18px;
-  background: rgba(91,140,255,.10);
-  border-radius: 10px;
-  white-space: nowrap;
 }
 
 /* ---------- archiwum ---------- */
@@ -283,7 +276,8 @@ aside {
   display: flex;
   position: sticky;
   top: 0;
-  z-index: 2;
+  /* oś czasu trzyma się nad wierszami i nad linią bieżącej godziny */
+  z-index: 5;
   background: var(--bg-2);
   border-bottom: 1px solid var(--border-soft);
 }
@@ -298,6 +292,10 @@ aside {
   border-left: 1px solid var(--border-soft);
 }
 
+/* Wiersze w jednym pudełku — tylko wtedy jedna pionowa linia bieżącej godziny
+   przechodzi przez wszystkie kanały naraz. */
+.guide-rows { position: relative; }
+
 .guide-row { display: flex; border-bottom: 1px solid var(--border-soft); min-height: 78px; }
 .guide-channel {
   width: 260px;
@@ -309,7 +307,8 @@ aside {
   background: var(--bg-2);
   position: sticky;
   left: 0;
-  z-index: 1;
+  /* nazwy kanałów przykrywają linię bieżącej godziny przy przewijaniu osi */
+  z-index: 4;
 }
 .guide-channel span { font-size: 18px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
@@ -336,11 +335,63 @@ aside {
 }
 .guide-program time { display: block; font-size: 14px; color: var(--faint); }
 .guide-program span { display: block; margin-top: 3px; font-size: 17px; overflow: hidden; text-overflow: ellipsis; }
-.guide-program.now { background: var(--grad); border-color: transparent; }
-.guide-program.now time, .guide-program.now span { color: #fff; }
+/* tytuł i podpis „LIVE” w jednej linii (podpis tylko przy programie, który
+   leci teraz) */
+.guide-title-row { display: flex; align-items: center; gap: 8px; margin-top: 3px; min-width: 0; }
+.guide-program .guide-title-row span { margin-top: 0; flex: 1; min-width: 0; }
+.guide-live {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: .06em;
+  background: var(--danger);
+  color: #fff;
+}
+/* Program, który leci teraz, jest tylko obwiedziony kolorem akcentu — mocne
+   podświetlenie należy do programu wybieranego pilotem (tym wskazuje się
+   materiał do catch-up). */
+.guide-program.now { border-color: var(--accent); }
+.guide-program.now time { color: var(--accent); }
 .guide-program.past { opacity: .62; }
-.guide-program:focus { border-color: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,.25); }
+.guide-program.past:focus, .guide-program.past:focus-visible { opacity: 1; }
+.guide-program:focus, .guide-program:focus-visible {
+  background: var(--grad);
+  border-color: transparent;
+  box-shadow: 0 0 0 3px rgba(255,255,255,.25);
+}
+.guide-program:focus time, .guide-program:focus span { color: #fff; }
 .guide-program:disabled { cursor: default; }
+
+/* Linia bieżącej godziny: pionowa kreska przez całą wysokość siatki, a u góry
+   (pod osią czasu) podpis z aktualną godziną. Rysuje ją renderGuide(), a co
+   20 s przesuwa updateGuideNowLine() — patrz www/app.js. */
+.guide-nowline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--danger);
+  pointer-events: none;
+  z-index: 3;
+}
+.guide-nowline-label {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 20px;
+  white-space: nowrap;
+  background: var(--danger);
+  color: #fff;
+}
 
 /* ---------- odtwarzacz ---------- */
 .player-screen { background: #000; }
@@ -592,6 +643,13 @@ body.uimode-tv .channel:focus-within {
   outline: 3px solid var(--accent);
   outline-offset: 2px;
 }
+/* Obwódka fokusu jest jedna, wokół całego kafelka kanału. Sam środek (nazwa
+   kanału, program teraz i następny) dostawał wcześniej własną, drugą obwódkę
+   — na telewizorze wyglądało to jak trzy osobne ramki w jednej. */
+body.uimode-tv .channel .channel-main:focus,
+body.uimode-tv .channel .channel-main:focus-visible {
+  outline: none;
+}
 
 /* pasek przewijania na TV jest bezużyteczny, a kosztuje przemalowanie ekranu */
 body.uimode-tv ::-webkit-scrollbar { width: 0 !important; height: 0 !important; }
@@ -810,16 +868,13 @@ body.uimode-tv button .icon { width: 26px; height: 26px; }
 .labeled-button { padding: 13px 20px; }
 body.uimode-tv .labeled-button { padding: 15px 24px; font-size: 21px; }
 
-/* ulubione i archiwum na kafelku kanału — sama ikona, wyśrodkowana */
-.favorite-button.has-icon,
-.archive-button.has-icon {
+/* gwiazdka ulubionych na kafelku kanału — sama ikona, wyśrodkowana */
+.favorite-button.has-icon {
   justify-content: center;
   gap: 0;
 }
 .favorite-button .icon { width: 30px; height: 30px; }
 body.uimode-tv .favorite-button .icon { width: 36px; height: 36px; }
-.archive-button .icon { width: 22px; height: 22px; }
-body.uimode-tv .archive-button .icon { width: 26px; height: 26px; }
 
 /* menu opcji kanału i pytanie o wyjście: ikona przed napisem */
 .ctx-actions button.has-icon .icon { width: 24px; height: 24px; }

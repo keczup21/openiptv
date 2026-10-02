@@ -324,9 +324,11 @@ check("pasek odtwarzacza i menu opcji wstawiaja napisy z ikona",
   (src.match(/setIconLabel\(button, label\);/g) || []).length >= 2 &&
   src.indexOf("setIconLabel(playButton, t(video && video.paused") > 0 &&
   src.indexOf("setIconLabel(muteButton, muteLabel())") > 0);
-check("kafelek kanalu ma ikony ulubionych i archiwum jako SVG",
+check("kafelek kanalu ma sama gwiazdke ulubionych (bez przycisku „<<” na archiwum)",
   src.indexOf('setIconLabel(favorite, isFavorite(channel) ? "★" : "☆")') > 0 &&
-  src.indexOf('setIconLabel(archive, "⏪")') > 0);
+  src.indexOf("archive-button") < 0 && src.indexOf("setIconLabel(archive") < 0);
+check("nagrania zostaja pod reka: menu opcji kanalu nadal ma archiwum",
+  src.indexOf('ctxButton(t("ctx_archive")') > 0 && css.indexOf(".archive-button") < 0);
 check("filtrowanie listy przy wpisywaniu zapytania zostaje bez zmian",
   src.indexOf('$("searchInput").oninput') > 0);
 
@@ -337,8 +339,9 @@ function tag(id) {
   return html.slice(at, html.indexOf("</button>", at) + 9);
 }
 const guideBtn = tag("openGuide");
-check("przycisk EPG ma ikone kalendarza i napis (nie sam znak)",
-  guideBtn.indexOf("<svg") > 0 && guideBtn.indexOf(">EPG<") > 0, guideBtn.slice(0, 60));
+check("przycisk programu TV to sam napis „EPG” (bez ikony kalendarza)",
+  guideBtn.indexOf("<svg") < 0 && guideBtn.indexOf(">EPG<") > 0 &&
+  guideBtn.indexOf('class="labeled-button"') > 0, guideBtn.slice(0, 60));
 check("przycisk ustawien to sama zebatka (napis zostal w podpowiedzi)",
   tag("openSettings").indexOf('class="icon-button"') > 0 &&
   tag("openSettings").indexOf("<svg") > 0 &&
@@ -638,6 +641,40 @@ check("pozostale listy (<option>) maja wlasne tlo, a nie systemowe",
   /select option\s*\{[^}]*background/.test(css));
 check("lista wyboru powstaje przy starcie, a wartosc z profilu ja odswieza",
   src.indexOf("\n  buildChoiceRows();") > 0 && src.indexOf("\n    syncChoiceRows();") > 0);
+
+/* --- 14. program TV: podpis „LIVE”, podświetlenie do catch-up, linia godziny --
+   Program, który leci teraz, dostaje podpis „LIVE” i samą obwódkę akcentu,
+   a mocne podświetlenie (gradient) należy do programu wybieranego pilotem —
+   tym samym wskazuje się materiał do catch-up. Przez całą siatkę, przez
+   wszystkie kanały, biegnie pionowa linia bieżącej godziny z podpisem. */
+check("program „teraz” jest podpisany „LIVE” przy tytule",
+  src.indexOf('titleRow.className = "guide-title-row"') > 0 &&
+  src.indexOf('live.className = "guide-live"') > 0 &&
+  src.indexOf('live.textContent = t("live")') > 0 &&
+  css.indexOf(".guide-live {") > 0);
+check("mocne podswietlenie nalezy do wybieranego programu, nie do „teraz”",
+  /\.guide-program:focus[\s\S]{0,140}background: var\(--grad\)/.test(css) &&
+  /\.guide-program\.now\s*\{\s*border-color: var\(--accent\)/.test(css));
+check("zaznaczony program do catch-up nie jest przygaszony",
+  css.indexOf(".guide-program.past:focus") > 0);
+check("linia biezacej godziny: pionowa kreska przez cala siatke i podpis z godzina",
+  src.indexOf('line.className = "guide-nowline"') > 0 &&
+  src.indexOf('line.id = "guideNowLine"') > 0 &&
+  /\.guide-nowline\s*\{[^}]*top: 0[^}]*bottom: 0/.test(css) &&
+  css.indexOf(".guide-nowline-label {") > 0);
+check("linia liczy sie od poczatku osi czasu (kolumna kanalow + godzina)",
+  src.indexOf("lane.offsetLeft") > 0 && src.indexOf("GUIDE_CHANNEL_WIDTH") > 0);
+check("linia odswieza sie sama, a zegar chodzi tylko na widocznym programie TV",
+  src.indexOf("setInterval(updateGuideNowLine, GUIDE_NOWLINE_MS)") > 0 &&
+  src.indexOf('if (id !== "guideScreen") stopGuideNowLine();') > 0 &&
+  src.indexOf("stopGuideNowLine();\n    showScreen(target);") > 0);
+check("wiersze siedza we wspolnym pudelku (inaczej linia nie przejdzie przez wszystkie)",
+  src.indexOf('rowsWrap.className = "guide-rows"') > 0 &&
+  css.indexOf(".guide-rows { position: relative; }") > 0);
+check("nazwy kanalow przykrywaja linie przy przewijaniu osi czasu",
+  /\.guide-channel\s*\{[^}]*z-index: 4/.test(css) && /\.guide-axis\s*\{[^}]*z-index: 5/.test(css));
+check("fokus kafelka kanalu to jedna obwodka wokol calego wiersza",
+  css.indexOf("body.uimode-tv .channel .channel-main:focus") > 0);
 
 console.log("");
 if (fails) { console.log("BLEDY: " + fails); process.exit(1); }

@@ -21,7 +21,7 @@
      był natychmiastowy i nie przepisywał za każdym razem megabajtów danych. */
   var BLOBS_KEY = "openiptvBlobs";
   var BLOB_FIELDS = ["playlistFileText", "epgFileText", "playlistFileName", "epgFileName"];
-  var APP_VERSION = "1.21.2";
+  var APP_VERSION = "1.21.3";
   var SCHEMA_VERSION = 4;
 
   /* „Ostatnio oglądane”: kanał trafia na listę po 10 s oglądania,
@@ -48,6 +48,14 @@
      zbudować całej siatki bez zamrożenia interfejsu, a i tak nikt nie
      przewija 5000 wierszy pilotem — resztę zawęża się kategorią. */
   var GUIDE_ROWS = 60;
+  /* Szerokość kolumny z nazwami kanałów w programie TV — tyle samo co
+     w styles.css (.guide-channel i .guide-corner). Potrzebna, żeby linia
+     bieżącej godziny wypadła dokładnie na początku osi czasu, także wtedy, gdy
+     siatka jest jeszcze niewidoczna i nie da się jej zmierzyć. */
+  var GUIDE_CHANNEL_WIDTH = 260;
+  /* Co ile przesuwamy linię bieżącej godziny: przy 280 px na godzinę minuta to
+     ~4,7 px, więc częstsze odświeżanie niczego nie zmienia. */
+  var GUIDE_NOWLINE_MS = 20000;
   /* Jak długo kanał na żywo może stać w pauzie, żeby wznowienie poszło jeszcze
      z tego samego strumienia. Po tym czasie obraz ucieka do przodu, więc
      wznawiamy z archiwum dokładnie od chwili zatrzymania — inaczej „wznów”
@@ -128,7 +136,10 @@
     /* kanał, na którym EPG ma stanąć po otwarciu (oglądany kanał), oraz ekran,
        do którego wracamy po zamknięciu programu TV */
     focusKey: "",
-    returnTo: "browserScreen"
+    returnTo: "browserScreen",
+    /* zegar przesuwający linię bieżącej godziny (działa tylko na widocznym
+       programie TV — pilnuje tego showScreen) */
+    lineTimer: null
   };
 
   var DEFAULTS = {
@@ -968,6 +979,8 @@
     for (var i = 0; i < SCREENS.length; i++) {
       $(SCREENS[i]).classList.toggle("hidden", SCREENS[i] !== id);
     }
+    /* zegar linii bieżącej godziny chodzi tylko na widocznym programie TV */
+    if (id !== "guideScreen") stopGuideNowLine();
     window.setTimeout(function () {
       /* fokus wchodzi na przycisk, nigdy na pole tekstowe: na telewizorze
          klawiatura ekranowa zasłaniałaby listę, a po zapisaniu ustawień samo
@@ -1317,6 +1330,19 @@
     return found;
   }
 
+  /* Adres, spod którego plugin pobiera paczkę. Pole `url` z API GitHuba
+     (api.github.com/repos/.../releases/assets/N) oddaje metadane pliku, a nie
+     sam plik — bez nagłówka „Accept: application/octet-stream” przychodzi
+     kilkaset bajtów JSON-a, więc instalator mówił „problem z analizowaniem
+     pakietu”. Właściwa paczka leży pod browser_download_url
+     (github.com/.../releases/download/<tag>/<plik>); adres API zostaje tylko
+     jako zapas, bo plugin dokłada wtedy wymagany nagłówek. */
+  function updateDownloadUrl(asset) {
+    if (!asset) return "";
+    if (asset.browser_download_url) return asset.browser_download_url;
+    return asset.url || "";
+  }
+
   /* Instalację robi natywny plugin — istnieje tylko w paczce Android / Fire TV */
   function nativeUpdater() {
     var C = (typeof window !== "undefined") ? window.Capacitor : null;
@@ -1574,7 +1600,7 @@
         if (!plugin.openInstallSettings) return null;
         return plugin.openInstallSettings().then(null, function () { return null; });
       }
-      return plugin.install({ url: asset.url, name: asset.name });
+      return plugin.install({ url: updateDownloadUrl(asset), name: asset.name });
     }).then(function () {
       setUpdateBusy(false);
       if (askedForPermission) return;
@@ -2550,6 +2576,10 @@
     };
     card.appendChild(main);
 
+    /* Na kafelku zostaje sama gwiazdka ulubionych. Przycisk archiwum („⏪”)
+       rysował się obok niej jak „<<” i był tu zbędny — do nagrań wchodzi się
+       z menu opcji kanału (przytrzymane OK / MENU) oraz z programu TV, gdzie
+       wybiera się konkretny program z przeszłości. */
     var favorite = document.createElement("button");
     favorite.className = "favorite-button";
     favorite.tabIndex = 0;
@@ -2559,17 +2589,6 @@
     };
     card.appendChild(favorite);
 
-    if (hasArchive(channel)) {
-      var archive = document.createElement("button");
-      archive.className = "archive-button";
-      archive.tabIndex = 0;
-      setIconLabel(archive, "⏪");
-      archive.title = "Archiwum / catch-up";
-      archive.onclick = function () {
-        openArchive(channel);
-      };
-      card.appendChild(archive);
-    }
     return card;
   }
 
@@ -3694,6 +3713,10 @@
     renderGuide();
     showScreen("guideScreen");
     focusGuideWatched();
+    /* linia bieżącej godziny rysuje się dopiero na widocznej siatce (wtedy da
+       się zmierzyć kolumnę z nazwami kanałów) i sama idzie dalej */
+    updateGuideNowLine();
+    startGuideNowLine();
   }
 
   /* powrót z programu TV tam, skąd przyszedł: do odtwarzacza albo do listy */
@@ -3701,6 +3724,7 @@
     var target = guide.returnTo === "playerScreen" ? "playerScreen" : "browserScreen";
     guide.focusKey = "";
     guide.returnTo = "browserScreen";
+    stopGuideNowLine();
     showScreen(target);
   }
 
@@ -3809,6 +3833,11 @@
         }
       }
     }
+    /* Wiersze siedzą we wspólnym pudełku: tylko wtedy da się poprowadzić przez
+       wszystkie kanały jedną pionową linię bieżącej godziny. */
+    var rowsWrap = document.createElement("div");
+    rowsWrap.className = "guide-rows";
+
     rows.slice(first, first + GUIDE_ROWS).forEach(function (channel) {
       var row = document.createElement("div");
       row.className = "guide-row";
@@ -3846,9 +3875,19 @@
         var tm = document.createElement("time");
         tm.textContent = pad2(new Date(p.start).getHours()) + ":" + pad2(new Date(p.start).getMinutes());
         block.appendChild(tm);
+        var titleRow = document.createElement("div");
+        titleRow.className = "guide-title-row";
         var lab = document.createElement("span");
         lab.textContent = p.title;
-        block.appendChild(lab);
+        titleRow.appendChild(lab);
+        /* program, który leci teraz, dostaje podpis „LIVE” */
+        if (isNow) {
+          var live = document.createElement("em");
+          live.className = "guide-live";
+          live.textContent = t("live");
+          titleRow.appendChild(live);
+        }
+        block.appendChild(titleRow);
 
         block.onclick = function () {
           if (isNow) playChannel(channel, null, "guideScreen");
@@ -3857,8 +3896,20 @@
         lane.appendChild(block);
       });
       row.appendChild(lane);
-      container.appendChild(row);
+      rowsWrap.appendChild(row);
     });
+    container.appendChild(rowsWrap);
+
+    /* linia bieżącej godziny — nad wierszami, więc przechodzi przez całą
+       wysokość siatki, a podpis u góry pokazuje aktualną godzinę */
+    var line = document.createElement("div");
+    line.className = "guide-nowline";
+    line.id = "guideNowLine";
+    var chip = document.createElement("b");
+    chip.className = "guide-nowline-label";
+    line.appendChild(chip);
+    rowsWrap.appendChild(line);
+    updateGuideNowLine();
 
     var from = new Date(start);
     var to = new Date(end);
@@ -3892,6 +3943,50 @@
       }
       return;
     }
+  }
+
+  /* =====================  LINIA BIEŻĄCEJ GODZINY (EPG)  =====================
+     Pionowa linia przez całą siatkę pokazuje, gdzie na osi czasu jesteśmy
+     teraz — jednym rzutem oka widać, co leci, a co da się jeszcze cofnąć
+     z archiwum. Podpis u góry osi to aktualna godzina. Linia odświeża się
+     sama, dopóki program TV jest otwarty (patrz startGuideNowLine). */
+
+  function updateGuideNowLine() {
+    var line = $("guideNowLine");
+    if (!line) return;
+
+    var start = guide.windowStart;
+    var now = Date.now();
+    /* inny dzień niż dzisiejszy: bieżącej godziny nie ma na osi, linia znika */
+    if (now < start || now > start + guide.hours * 3600000) {
+      line.classList.add("hidden");
+      return;
+    }
+    line.classList.remove("hidden");
+
+    /* kolumnę z nazwami kanałów mierzymy w siatce, a nie przepisujemy z CSS —
+       linia ma wypaść dokładnie na początku osi czasu */
+    var wrap = line.parentNode;
+    var lane = wrap && wrap.querySelector ? wrap.querySelector(".guide-lane") : null;
+    var base = lane && lane.offsetLeft ? lane.offsetLeft : GUIDE_CHANNEL_WIDTH;
+    line.style.left = (base + (now - start) / 3600000 * guide.hourWidth) + "px";
+
+    var label = line.querySelector ? line.querySelector(".guide-nowline-label") : null;
+    if (label) {
+      var clock = new Date(now);
+      label.textContent = pad2(clock.getHours()) + ":" + pad2(clock.getMinutes());
+    }
+  }
+
+  function stopGuideNowLine() {
+    if (!guide.lineTimer) return;
+    clearInterval(guide.lineTimer);
+    guide.lineTimer = null;
+  }
+
+  function startGuideNowLine() {
+    stopGuideNowLine();
+    guide.lineTimer = setInterval(updateGuideNowLine, GUIDE_NOWLINE_MS);
   }
 
   /* =========================  OSD ODTWARZACZA (MINI-EPG)  =========================

@@ -17,6 +17,7 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -33,6 +34,8 @@ public class UpdatePlugin extends Plugin {
     private static final String APK_MIME = "application/vnd.android.package-archive";
     private static final int TIMEOUT_MS = 30000;
     private static final int BUFFER_BYTES = 64 * 1024;
+    /* Ile razy wolno podazyc za przekierowaniem, zanim uznamy, ze cos sie zapetlilo */
+    private static final int MAX_REDIRECTS = 5;
 
     /* Czy system pozwoli tej aplikacji otworzyc instalator. Od Androida 8 kazda
        aplikacja ma wlasna zgode („Instaluj nieznane aplikacje”). */
@@ -85,7 +88,10 @@ public class UpdatePlugin extends Plugin {
             public void run() {
                 final File target = new File(getContext().getCacheDir(), fileName);
                 try {
-                    download(url, target);
+                    /* najpierw sprawdzamy, ze przyszla prawdziwa paczka — komunikat
+                       „nie jest paczka APK” mowi wiecej niz „problem z analizowaniem
+                       pakietu” z systemowego instalatora */
+                    ensureApk(target, download(url, target));
                     final long size = target.length();
                     runOnUi(new Runnable() {
                         @Override
@@ -129,49 +135,100 @@ public class UpdatePlugin extends Plugin {
         activity.runOnUiThread(action);
     }
 
-    private void download(String url, File target) throws Exception {
-        HttpURLConnection connection = null;
-        InputStream input = null;
-        FileOutputStream output = null;
-        try {
-            connection = (HttpURLConnection) new URL(url).openConnection();
-            connection.setInstanceFollowRedirects(true);
-            connection.setConnectTimeout(TIMEOUT_MS);
-            connection.setReadTimeout(TIMEOUT_MS);
-            connection.setRequestProperty("User-Agent", "OpenIPTV-Updater");
+    /* Pobiera paczke i zwraca typ zawartosci odeslany przez serwer (do komunikatu
+       o bledzie). Adres z wydania na GitHubie przekierowuje na inny serwer
+       (github.com -> objects.githubusercontent.com), a naglowki trzeba wyslac do
+       kazdego kroku — dlatego przekierowania obslugujemy sami.
+       „Accept: application/octet-stream” jest konieczny, gdy plugin dostanie
+       adres z API GitHuba (api.github.com/.../releases/assets/N): bez niego API
+       oddaje metadane pliku w JSON-ie, czyli kilkaset bajtow zamiast paczki,
+       a instalator mowi wtedy „problem z analizowaniem pakietu”. */
+    private String download(String url, File target) throws Exception {
+        String address = url;
+        for (int hop = 0; hop <= MAX_REDIRECTS; hop++) {
+            HttpURLConnection connection = null;
+            InputStream input = null;
+            FileOutputStream output = null;
+            try {
+                connection = (HttpURLConnection) new URL(address).openConnection();
+                connection.setInstanceFollowRedirects(false);
+                connection.setConnectTimeout(TIMEOUT_MS);
+                connection.setReadTimeout(TIMEOUT_MS);
+                connection.setRequestProperty("User-Agent", "OpenIPTV-Updater");
+                connection.setRequestProperty("Accept", "application/octet-stream");
 
-            int status = connection.getResponseCode();
-            if (status < 200 || status >= 300) throw new Exception("HTTP " + status);
-
-            long total = connection.getContentLength();
-            input = connection.getInputStream();
-            output = new FileOutputStream(target);
-
-            byte[] buffer = new byte[BUFFER_BYTES];
-            long done = 0;
-            int lastPercent = -1;
-            long lastNotify = 0;
-            int read;
-            while ((read = input.read(buffer)) > 0) {
-                output.write(buffer, 0, read);
-                done += read;
-                if (total <= 0) continue;
-                int percent = (int) (done * 100 / total);
-                long now = SystemClock.elapsedRealtime();
-                if (percent != lastPercent && now - lastNotify >= 100) {
-                    lastPercent = percent;
-                    lastNotify = now;
-                    notifyProgress(percent);
+                int status = connection.getResponseCode();
+                if (isRedirect(status)) {
+                    String next = connection.getHeaderField("Location");
+                    if (next == null || next.isEmpty()) throw new Exception("HTTP " + status);
+                    address = new URL(new URL(address), next).toString();
+                    continue;
                 }
+                if (status < 200 || status >= 300) throw new Exception("HTTP " + status);
+
+                long total = connection.getContentLength();
+                String contentType = connection.getContentType();
+                input = connection.getInputStream();
+                output = new FileOutputStream(target);
+
+                byte[] buffer = new byte[BUFFER_BYTES];
+                long done = 0;
+                int lastPercent = -1;
+                long lastNotify = 0;
+                int read;
+                while ((read = input.read(buffer)) > 0) {
+                    output.write(buffer, 0, read);
+                    done += read;
+                    if (total <= 0) continue;
+                    int percent = (int) (done * 100 / total);
+                    long now = SystemClock.elapsedRealtime();
+                    if (percent != lastPercent && now - lastNotify >= 100) {
+                        lastPercent = percent;
+                        lastNotify = now;
+                        notifyProgress(percent);
+                    }
+                }
+                output.flush();
+                if (total > 0 && done != total) {
+                    throw new Exception("Pobrano " + done + " z " + total + " B");
+                }
+                return contentType == null ? "" : contentType;
+            } finally {
+                if (output != null) output.close();
+                if (input != null) input.close();
+                if (connection != null) connection.disconnect();
             }
-            output.flush();
-            if (total > 0 && done != total) {
-                throw new Exception("Pobrano " + done + " z " + total + " B");
+        }
+        throw new Exception("Za duzo przekierowan przy pobieraniu paczki");
+    }
+
+    private boolean isRedirect(int status) {
+        return status == HttpURLConnection.HTTP_MOVED_PERM
+            || status == HttpURLConnection.HTTP_MOVED_TEMP
+            || status == HttpURLConnection.HTTP_SEE_OTHER
+            || status == 307
+            || status == 308;
+    }
+
+    /* Instalator systemowy przyjmie tylko prawdziwa paczke, wiec sprawdzamy
+       naglowek ZIP-a („PK”). Bez tego kazda odpowiedz serwera — na przyklad
+       JSON z API GitHuba — konczyla sie na ekranie telewizora komunikatem
+       „podczas analizowania pakietu wystapil problem”, bez slowa o przyczynie. */
+    private void ensureApk(File file, String contentType) throws Exception {
+        if (file.length() < 4) throw new Exception("Pobrana paczka jest pusta");
+        FileInputStream stream = null;
+        byte[] head = new byte[2];
+        try {
+            stream = new FileInputStream(file);
+            if (stream.read(head) != head.length) {
+                throw new Exception("Nie udalo sie odczytac pobranej paczki");
             }
         } finally {
-            if (output != null) output.close();
-            if (input != null) input.close();
-            if (connection != null) connection.disconnect();
+            if (stream != null) stream.close();
+        }
+        if (head[0] != 'P' || head[1] != 'K') {
+            String kind = (contentType == null || contentType.isEmpty()) ? "nieznany typ" : contentType;
+            throw new Exception("Serwer odeslal dane, ktore nie sa paczka APK (" + kind + ")");
         }
     }
 

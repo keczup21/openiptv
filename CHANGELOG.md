@@ -17,6 +17,28 @@ z numerem opisuje akapit wyżej). Opis wydania na GitHubie powstaje z tego wpisu
 `npm run notes` (`scripts/release-notes.js`) bierze z changeloga tylko sekcję
 wydawanej wersji.
 
+## [1.21.3] — 2026-10-03
+
+### Naprawiono
+- **„Pobierz i zainstaluj” naprawdę pobiera paczkę.** Aplikacja brała z GitHuba
+  adres opisujący wydanie, więc do instalatora trafiał tekst zamiast pliku `.apk`
+  i instalacja kończyła się komunikatem „podczas analizowania pakietu wystąpił
+  problem”. Teraz pobierany jest plik wydania, a paczka jest sprawdzana, zanim
+  trafi do systemu.
+- **Kafelek kanału ma jedną obwódkę fokusu** wokół całego wiersza — wcześniej
+  druga ramka rysowała się wokół nazwy kanału, programu teraz i następnego.
+- **Przycisk archiwum zniknął z listy kanałów** — obok gwiazdki ulubionych
+  rysował się jak „<<”. Nagrania otwiera się z opcji kanału i z programu TV.
+
+### Zmieniono
+- **Przycisk programu TV to sam napis „EPG”** — ikona kalendarza na telewizorze
+  bywa nieczytelna.
+- **Program, który leci teraz, ma w programie TV podpis „LIVE”**, a mocne
+  podświetlenie należy do programu wybieranego pilotem — czyli wskazywanego do
+  odtworzenia z archiwum.
+- **Przez program TV biegnie pionowa linia bieżącej godziny** z godziną u góry;
+  przesuwa się sama, dopóki ekran jest otwarty.
+
 ## [1.21.2] — 2026-10-03
 
 ### Zmieniono

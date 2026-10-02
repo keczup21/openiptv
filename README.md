@@ -95,11 +95,12 @@ końcu wpisanego tekstu do następnego pola paska, a `◀` — gdy kursor stoi n
 początku zapytania — do listy grup. W środku tekstu `◀` `▶` przesuwają kursor,
 więc zapytanie poprawia się jak na komputerze.
 
-Ikony przycisków (`EPG`, zębatka, odświeżanie, pasek odtwarzacza, gwiazdki
-ulubionych i archiwum na kafelkach) są rysowane jako SVG, a nie znakami emoji:
-na dekoderach telewizyjnych czcionka emoji bywa okrojona i z ikony zostawała
-kropka. Podpowiedź pilota pod listą to teraz pasek z tłem, a nie szary tekst
-położony na kanałach.
+Ikony przycisków (zębatka, odświeżanie, pasek odtwarzacza, gwiazdki ulubionych)
+są rysowane jako SVG, a nie znakami emoji: na dekoderach telewizyjnych czcionka
+emoji bywa okrojona i z ikony zostawała kropka. Przycisk programu TV to sam
+napis `EPG`, a nagrania otwiera się z opcji kanału (`OK` przytrzymane / `MENU`).
+Podpowiedź pilota pod listą to pasek z tłem, a nie szary tekst położony na
+kanałach.
 
 ## Plik M3U i EPG z pamięci
 
@@ -322,6 +323,10 @@ internetu.
 
 - **Android TV / Google TV / Fire TV** — `Pobierz i zainstaluj` pobiera
   `OpenIPTV-<wersja>.apk` z tego wydania i otwiera systemowy instalator.
+  Adres paczki to plik z wydania (`browser_download_url`), a nie adres API
+  GitHuba — API oddaje opis wydania w JSON-ie, więc instalator odpowiadał
+  wtedy „problem z analizowaniem pakietu”. Przed przekazaniem paczki systemowi
+  aplikacja sprawdza, że to naprawdę plik APK.
   Pobieraniem zajmuje się `UpdatePlugin.java` (lokalny plugin Capacitora,
   plik ląduje w cache aplikacji i wychodzi przez `FileProvider`), więc
   aktualizacja nie wymaga ADB ani komputera. Potrzebna jest zgoda „Instaluj

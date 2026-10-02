@@ -69,6 +69,26 @@ asset = v.updateAssetFor(release, "ipk");
 check("dla webOS wybierany jest .ipk", !!asset && asset.name === "OpenIPTV-1.19.4.ipk", JSON.stringify(asset));
 check("brak wydania to brak paczki", v.updateAssetFor(null, "apk") === null);
 
+/* --- 1b. adres paczki do pobrania ---------------------------------------- */
+/* Wazne dla aktualizacji z telewizora: pole `url` z API GitHuba oddaje metadane
+   pliku w JSON-ie (kilkaset bajtow), a nie paczke — instalator odpowiadal wtedy
+   „podczas analizowania pakietu wystapil problem”. Paczka jest pod
+   browser_download_url. */
+const apiAsset = {
+  name: "OpenIPTV-1.19.4.apk",
+  size: 4038058,
+  url: "https://api.github.com/repos/keczup21/openiptv/releases/assets/606584608",
+  browser_download_url: "https://github.com/keczup21/openiptv/releases/download/v1.19.4/OpenIPTV-1.19.4.apk"
+};
+check("paczke pobieramy z browser_download_url, a nie z API GitHuba",
+  v.updateDownloadUrl(apiAsset) === apiAsset.browser_download_url,
+  v.updateDownloadUrl(apiAsset));
+check("adres z API zostaje jako zapas (plugin doklada naglowek Accept)",
+  v.updateDownloadUrl({ url: apiAsset.url }) === apiAsset.url);
+check("brak paczki to pusty adres", v.updateDownloadUrl(null) === "");
+check("app.js podaje pluginowi wlasnie ten adres",
+  src.indexOf("plugin.install({ url: updateDownloadUrl(asset)") > 0);
+
 /* --- 2. siec: natywne HTTP Capacitora ----------------------------------- */
 function netHarness(reply) {
   const calls = [];
