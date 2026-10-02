@@ -108,7 +108,8 @@ OpenIPTV/
 ├─ scripts/
 │  ├─ build-webos.ps1       www/ + webos-service/ → .ipk
 │  ├─ build-android.ps1     www/ → .apk (Capacitor + Gradle)
-│  ├─ make-icons.ps1        ikony PNG z jednego wzoru wektorowego
+│  ├─ make-icons.ps1        ikony i ekrany startowe PNG z jednego wzoru
+│  ├─ test-*.js             testy bez telewizora (npm test)
 │  └─ publish.ps1           commit + push, opcjonalnie z tagiem i wydaniem (-Release)
 ├─ capacitor.config.json    appId: pl.openiptv.player, webDir: www
 ├─ package.json
@@ -175,6 +176,25 @@ Oba skrypty mają parametr `-OutDir`, którym można wskazać inny folder docelo
 - `android.permission.REQUEST_INSTALL_PACKAGES` oraz sekcja `<queries>` dla
   instalatora paczek — bez nich przycisk „Pobierz i zainstaluj” w ustawieniach
   nie otworzy systemowego instalatora na Androidzie 11+
+- motyw startowy `AppTheme.NoActionBarLaunch` (`android:background="@drawable/splash"`)
+  — ekran startowy to tło `#0a0c11` z logo OpenIPTV na środku; obrazki
+  w `res\drawable*\splash.png` generuje `scripts/make-icons.ps1`, żeby start
+  pokazywał ten sam znak co ikona aplikacji (`npm run test:splash` tego pilnuje)
+
+## Testy
+
+Bez telewizora i bez emulatora — `npm test` uruchamia wszystkie cztery:
+
+```powershell
+npm run test:seek     # decyzje przewijania archiwum (www/app.js)
+npm run test:update   # porównanie wersji i wybór paczki .apk / .ipk
+npm run test:ui       # skalowanie interfejsu (www/ui-scale.js)
+npm run test:splash   # ekran startowy Androida: tło, znak, wymiary, środek
+```
+
+Testy czytają prawdziwe pliki z repozytorium (wyciągają funkcje z `www/app.js`,
+a PNG czytają własnym kodem), więc nie trzymają kopii logiki, która mogłaby się
+rozjechać z aplikacją.
 
 ## Aktualizacja z aplikacji
 

@@ -1,6 +1,6 @@
 {
   "name": "openiptv",
-  "version": "1.20.0",
+  "version": "1.20.1",
   "private": true,
   "description": "OpenIPTV - one web codebase, two builds: webOS (.ipk) and Android / Fire TV (.apk).",
   "engines": {
@@ -16,6 +16,8 @@
     "test:seek": "node scripts/test-seek-logic.js",
     "test:update": "node scripts/test-update-check.js",
     "test:ui": "node scripts/test-ui-scale.js",
+    "test:splash": "node scripts/test-splash.js",
+    "test": "npm run test:seek && npm run test:update && npm run test:ui && npm run test:splash",
     "build:all": "npm run build:webos && npm run build:android",
     "android:add": "npx cap add android",
     "android:sync": "npx cap sync android",

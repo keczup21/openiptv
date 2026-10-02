@@ -1,5 +1,5 @@
 <#
-  make-icons.ps1 — generuje ikony OpenIPTV (PNG) z jednego wzoru wektorowego.
+  make-icons.ps1 — generuje ikony i ekrany startowe OpenIPTV (PNG) z jednego wzoru.
 
   Wzór (przestrzeń projektowa 512x512, zgodna z www/icon.svg):
     * tło  : zaokrąglony kwadrat (albo koło) z gradientem #5b8cff -> #8b5cff
@@ -10,6 +10,11 @@
     android\app\src\main\res\mipmap-*\ic_launcher.png
                                    \ic_launcher_round.png
                                    \ic_launcher_foreground.png
+    android\app\src\main\res\drawable*\splash.png   — ekran startowy: tło
+                                   #0a0c11 (kolor aplikacji) + ten sam znak
+                                   na środku, w rozmiarach, jakich oczekuje
+                                   Capacitor (drawable + land/port w każdej
+                                   gęstości)
 
   Uruchomienie:
     powershell -ExecutionPolicy Bypass -File scripts\make-icons.ps1
@@ -41,6 +46,14 @@ $script:Waves = @(
 $script:ColorA = '#5b8cff'
 $script:ColorB = '#8b5cff'
 $script:CornerRadius = 118.0
+
+# ---------- ekran startowy (splash) ----------
+# Tło splashu to kolor aplikacji (#0a0c11 — ten sam co www/styles.css --bg
+# i appinfo.json bgColor). Domyślny splash z szablonu Capacitora był biały,
+# więc zamiast logo OpenIPTV pokazywał się obcy znak, a po starcie ekran
+# mrugał na biało. Logo zajmuje 26% krótszego boku ekranu.
+$script:SplashBg = '#0a0c11'
+$script:SplashLogo = 0.26
 
 function Get-GlyphBounds {
   $xs = New-Object System.Collections.Generic.List[double]
@@ -171,7 +184,48 @@ function Save-Logo {
   Write-Host ("  {0,-52} {1,4}px  {2}" -f $Path.Replace($Root + '\', ''), $Size, $Mode)
 }
 
-Write-Host "OpenIPTV - generowanie ikon w $Root"
+# Ekran startowy: jednolite tło aplikacji + wyśrodkowany znak. Rozmiar znaku
+# liczymy z krótszego boku, więc na szerokim i na pionowym ekranie wygląda
+# tak samo duży.
+function New-SplashBitmap {
+  param(
+    [int]$Width,
+    [int]$Height
+  )
+
+  $bmp = New-Object System.Drawing.Bitmap($Width, $Height, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+  $g = [System.Drawing.Graphics]::FromImage($bmp)
+  $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+  $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+  $g.Clear([System.Drawing.ColorTranslator]::FromHtml($script:SplashBg))
+
+  $logoSize = [int][Math]::Round([Math]::Min($Width, $Height) * $script:SplashLogo)
+  if ($logoSize -lt 16) { $logoSize = 16 }
+  $logo = New-LogoBitmap -Size $logoSize -Mode 'tile'
+  $x = [int][Math]::Round(($Width - $logoSize) / 2.0)
+  $y = [int][Math]::Round(($Height - $logoSize) / 2.0)
+  $g.DrawImageUnscaled($logo, $x, $y)
+  $logo.Dispose()
+
+  $g.Dispose()
+  return $bmp
+}
+
+function Save-Splash {
+  param(
+    [string]$Path,
+    [int]$Width,
+    [int]$Height
+  )
+  $dir = Split-Path -Parent $Path
+  if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+  $bmp = New-SplashBitmap -Width $Width -Height $Height
+  $bmp.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
+  $bmp.Dispose()
+  Write-Host ("  {0,-52} {1,4}px  {2}" -f $Path.Replace($Root + '\', ''), "${Width}x${Height}", 'splash')
+}
+
+Write-Host "OpenIPTV - generowanie ikon i ekranów startowych w $Root"
 Save-Logo -Path (Join-Path $Root 'www\icon.png')      -Size 80  -Mode tile
 Save-Logo -Path (Join-Path $Root 'www\largeicon.png') -Size 130 -Mode tile
 
@@ -188,6 +242,28 @@ foreach ($d in $density) {
   Save-Logo -Path (Join-Path $dir 'ic_launcher.png')            -Size $d.Icon -Mode tile
   Save-Logo -Path (Join-Path $dir 'ic_launcher_round.png')      -Size $d.Icon -Mode round
   Save-Logo -Path (Join-Path $dir 'ic_launcher_foreground.png') -Size $d.Fg   -Mode foreground
+}
+
+# Ekrany startowe — dokładnie te pliki i te wymiary, których szuka Capacitor
+# (android\app\src\main\res\values\styles.xml: AppTheme.NoActionBarLaunch ma
+# android:background="@drawable/splash"). Android wybiera wariant land/port
+# w swojej gęstości i rozciąga obrazek na całe okno, dlatego każdy wariant ma
+# proporcje typowego ekranu w tej gęstości.
+$splash = @(
+  @{ File = 'drawable\splash.png';               W = 480;  H = 320  },
+  @{ File = 'drawable-land-mdpi\splash.png';     W = 480;  H = 320  },
+  @{ File = 'drawable-land-hdpi\splash.png';     W = 800;  H = 480  },
+  @{ File = 'drawable-land-xhdpi\splash.png';    W = 1280; H = 720  },
+  @{ File = 'drawable-land-xxhdpi\splash.png';   W = 1600; H = 960  },
+  @{ File = 'drawable-land-xxxhdpi\splash.png';  W = 1920; H = 1280 },
+  @{ File = 'drawable-port-mdpi\splash.png';     W = 320;  H = 480  },
+  @{ File = 'drawable-port-hdpi\splash.png';     W = 480;  H = 800  },
+  @{ File = 'drawable-port-xhdpi\splash.png';    W = 720;  H = 1280 },
+  @{ File = 'drawable-port-xxhdpi\splash.png';   W = 960;  H = 1600 },
+  @{ File = 'drawable-port-xxxhdpi\splash.png';  W = 1280; H = 1920 }
+)
+foreach ($s in $splash) {
+  Save-Splash -Path (Join-Path $resRoot $s.File) -Width $s.W -Height $s.H
 }
 
 Write-Host "Gotowe."

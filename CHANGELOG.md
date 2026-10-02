@@ -9,6 +9,24 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/), wersje wg [Sem
 `www/appinfo.json`, `package.json`, `android/app/build.gradle`) podbija jedna
 komenda: `npm run bump -- X.Y.Z`.
 
+## [1.20.1] — 2026-10-02
+
+### Naprawiono
+- **Ekran startowy pokazuje logo OpenIPTV.** Przy włączaniu (Android TV, Fire TV)
+  widniał domyślny obrazek z szablonu Capacitora — białe tło i obcy znak — więc
+  logo było inne niż na ikonie aplikacji. Teraz wszystkie jedenaście wariantów
+  `drawable*/splash.png` powstaje w tym samym generatorze co ikony
+  (`scripts/make-icons.ps1`): tło w kolorze aplikacji (`#0a0c11`, ten sam co
+  `--bg` w `www/styles.css` i `bgColor` w manifeście webOS) oraz ten sam znak
+  (`$script:SplashLogo = 0.26` krótszego boku) na środku. Start nie mruga już na
+  biało — ekran startowy przechodzi w interfejs bez zmiany koloru.
+
+### Dodano
+- **`npm run test:splash`** — test bez telewizora i bez emulatora: czyta pliki PNG
+  własnym kodem i sprawdza w każdym wariancie wymiary, tło, rozmiar znaku i jego
+  wyśrodkowanie, a także to, że `make-icons.ps1` opisuje te same pliki.
+  `npm test` uruchamia wszystkie testy projektu (seek, update, ui, splash).
+
 ## [1.20.0] — 2026-10-02
 
 ### Dodano
