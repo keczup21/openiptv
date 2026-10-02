@@ -380,6 +380,115 @@ check("podpowiedz pilota to czytelny pasek (tlo, jasny tekst, wieksza czcionka)"
 check("podpowiedz nie jest juz polozona na wierzchu listy kanalow",
   css.slice(css.indexOf(".tv-keys-hint {"), hintAt).indexOf("position: absolute") < 0);
 
+/* --- 11. przewijanie ekranu przy nawigacji pilotem ----------------------
+   `scrollIntoView(false)` wyrownywal sfokusowany element do samej dolnej
+   krawedzi: kazdy krok pilota robil duzy, nierowny skok („po schodkach”), a
+   to, co bylo pod przyciskiem (opis zmian, „Zapisz i pobierz”), zostawalo
+   poza ekranem. keepInView() dosuwa ekran tylko o brakujacy kawalek i z
+   zapasem, zeby widac bylo takze sasiednie wiersze. */
+const scrollStart = src.indexOf("function scrollParent(");
+const scrollEnd = src.indexOf("function focusNearest(");
+if (scrollStart < 0 || scrollEnd < 0 || scrollEnd <= scrollStart) {
+  throw new Error("Nie znalazlem bloku przewijania w app.js");
+}
+const codeScroll = src.slice(scrollStart, scrollEnd);
+if (codeScroll.indexOf("function keepInView") < 0) {
+  throw new Error("Wyciety blok przewijania nie ma keepInView");
+}
+
+/* atrapa kontenera: wiersze licza swoje polozenie od biezacego scrollTop */
+function fakeScrollBox(height) {
+  return {
+    nodeType: 1,
+    parentNode: null,
+    style: { overflowY: "auto" },
+    scrollTop: 0,
+    scrollLeft: 0,
+    clientHeight: height,
+    clientWidth: 1000,
+    scrollHeight: 5000,
+    getBoundingClientRect: function () {
+      return { top: 0, left: 0, bottom: height, right: 1000, width: 1000, height: height };
+    }
+  };
+}
+function fakeRow(box, top, height) {
+  return {
+    nodeType: 1,
+    parentNode: box,
+    getBoundingClientRect: function () {
+      const t = top - box.scrollTop;
+      return { top: t, left: 0, bottom: t + height, right: 800, width: 800, height: height };
+    }
+  };
+}
+function scrollHarness() {
+  return run(codeScroll, {
+    window: { getComputedStyle: function (node) { return node.style; } },
+    focusAnchor: null
+  });
+}
+
+(function () {
+  const api = scrollHarness();
+  const box = fakeScrollBox(1000);
+  const row = fakeRow(box, 900, 60);
+  api.keepInView(row);
+  check("wiersz przy dolnej krawedzi zjezdza z zapasem, a nie staje na krawedzi",
+    box.scrollTop === 160, "scrollTop = " + box.scrollTop);
+  check("po dosunieciu pod wierszem zostaje miejsce na to, co jest nizej",
+    box.getBoundingClientRect().bottom - row.getBoundingClientRect().bottom === 200,
+    String(box.getBoundingClientRect().bottom - row.getBoundingClientRect().bottom));
+})();
+
+(function () {
+  const api = scrollHarness();
+  const box = fakeScrollBox(1000);
+  api.keepInView(fakeRow(box, 300, 60));
+  check("wiersz widoczny z zapasem nie rusza ekranu (bez skokow)", box.scrollTop === 0, String(box.scrollTop));
+})();
+
+(function () {
+  const api = scrollHarness();
+  const box = fakeScrollBox(1000);
+  box.scrollTop = 500;
+  api.keepInView(fakeRow(box, 500, 60));
+  check("wiersz nad ekranem wraca z zapasem od gornej krawedzi", box.scrollTop === 300, String(box.scrollTop));
+})();
+
+(function () {
+  const api = scrollHarness();
+  const box = fakeScrollBox(1000);
+  box.scrollHeight = 900; /* tresc miesci sie w oknie — nie ma czego przewijac */
+  api.keepInView(fakeRow(box, 2000, 60));
+  check("kontener bez przewijania nie jest ruszany", box.scrollTop === 0, String(box.scrollTop));
+
+  let threw = "";
+  try { api.keepInView(null); api.keepInView({}); } catch (error) { threw = String(error && error.message); }
+  check("keepInView nie wywraca sie na atrapie elementu", threw === "", threw);
+})();
+
+const focusStart = src.indexOf("function focusNearest(");
+const focusEnd = src.indexOf("function searchArrowTarget(");
+if (focusStart < 0 || focusEnd < 0) throw new Error("Nie znalazlem focusNearest w app.js");
+const codeFocus = src.slice(focusStart, focusEnd);
+check("nawigacja pilotem dosuwa ekran z zapasem, a nie do samej krawedzi",
+  codeFocus.indexOf("keepInView(best)") > 0 && codeFocus.indexOf("scrollIntoView") < 0);
+check("zgubiony fokus liczy od ostatniego miejsca, a nie od poczatku ekranu",
+  codeFocus.indexOf("focusAnchor") > 0 && codeFocus.indexOf("focusAnchor.box") > 0);
+
+/* --- 12. przyciski aktualizacji w trakcie pobierania --------------------
+   `disabled` na przycisku „Pobierz i zainstaluj” zabieralo fokus w trakcie
+   pobierania paczki — nawigacja pilotem wracala wtedy na poczatek ustawien
+   i nie dalo sie zjechac do opisu zmian ani do „Zapisz”. */
+check("przyciski aktualizacji nie traca fokusu w trakcie pobierania (bez disabled)",
+  src.indexOf("check.disabled") < 0 && src.indexOf("install.disabled") < 0 &&
+  src.indexOf('button.classList.add("busy")') > 0);
+check("app.js pamieta ostatnie miejsce fokusu (focusin)",
+  src.indexOf('document.addEventListener("focusin"') > 0);
+check("CSS przygasza przycisk w trakcie pobierania",
+  /\.update-row button\.busy\s*\{[^}]*opacity/.test(css));
+
 console.log("");
 if (fails) { console.log("BLEDY: " + fails); process.exit(1); }
 console.log("Wszystkie sprawdzenia przeszly.");

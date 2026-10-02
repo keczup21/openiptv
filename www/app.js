@@ -21,7 +21,7 @@
      był natychmiastowy i nie przepisywał za każdym razem megabajtów danych. */
   var BLOBS_KEY = "openiptvBlobs";
   var BLOB_FIELDS = ["playlistFileText", "epgFileText", "playlistFileName", "epgFileName"];
-  var APP_VERSION = "1.21.0";
+  var APP_VERSION = "1.21.1";
   var SCHEMA_VERSION = 4;
 
   /* „Ostatnio oglądane”: kanał trafia na listę po 10 s oglądania,
@@ -1301,12 +1301,27 @@
     el.classList.add("hidden");
   }
 
+  /* Przyciski w trakcie pobierania zostają dostępne dla pilota. `disabled`
+     zabierało fokus (przeglądarka oddaje go wtedy ciału strony), więc po
+     naciśnięciu „Pobierz i zainstaluj” nawigacja wracała na początek
+     ustawień i nie dało się już zjechać do opisu zmian ani do „Zapisz”.
+     Drugie naciśnięcie i tak odrzuca updateState.busy — pilnują tego
+     checkForUpdates() i installAvailableUpdate(). */
+  function setButtonBusy(button, busy) {
+    if (!button) return;
+    if (busy) {
+      button.classList.add("busy");
+      button.setAttribute("aria-disabled", "true");
+      return;
+    }
+    button.classList.remove("busy");
+    button.removeAttribute("aria-disabled");
+  }
+
   function setUpdateBusy(busy) {
     updateState.busy = !!busy;
-    var check = $("checkUpdates");
-    var install = $("installUpdate");
-    if (check) check.disabled = !!busy;
-    if (install) install.disabled = !!busy;
+    setButtonBusy($("checkUpdates"), busy);
+    setButtonBusy($("installUpdate"), busy);
   }
 
   function hideInstallButton() {
@@ -3339,6 +3354,61 @@
       (rest < 10 ? "0" : "") + rest;
   }
 
+  /* -------------------------  PRZEWIJANIE EKRANU  --------------------------
+     Fokus ma zostać na ekranie, ale nie przy samej krawędzi. Wcześniej
+     `scrollIntoView(false)` wyrównywał sfokusowany element do dolnej krawędzi,
+     więc każdy krok pilota robił duży, nierówny skok („po schodkach”), a
+     wszystko pod przyciskiem — opis zmian, „Zapisz i pobierz” — zostawało poza
+     ekranem. Tutaj dosuwamy ekran tylko wtedy, gdy element nie mieści się w
+     marginesie, i tylko o tyle, ile trzeba, żeby widać było sąsiednie wiersze. */
+
+  /* Najbliższy przodek, który naprawdę się przewija. Bez tego scrollIntoView
+     przesuwa dokument, a ten jest przyklejony do ekranu (html, body — hidden). */
+  function scrollParent(element) {
+    var node = element && element.parentNode;
+    while (node && node.nodeType === 1) {
+      var style = (typeof window !== "undefined" && window.getComputedStyle)
+        ? window.getComputedStyle(node) : null;
+      var overflow = style ? style.overflowY : "";
+      if ((overflow === "auto" || overflow === "scroll") &&
+          node.scrollHeight > node.clientHeight + 1) {
+        return node;
+      }
+      node = node.parentNode;
+    }
+    return null;
+  }
+
+  function keepInView(element) {
+    if (!element || !element.getBoundingClientRect) return;
+    var parent = scrollParent(element);
+    if (!parent) return;
+
+    /* Zapas wokół sfokusowanego elementu (mniejszy na wąskim ekranie). */
+    var view = parent.getBoundingClientRect();
+    var marginY = Math.max(80, Math.min(200, Math.round(view.height * 0.25)));
+    var marginX = Math.max(40, Math.min(120, Math.round(view.width * 0.08)));
+    var box = element.getBoundingClientRect();
+    var down = 0;
+    var across = 0;
+
+    if (box.bottom + marginY > view.bottom) down = box.bottom + marginY - view.bottom;
+    else if (box.top - marginY < view.top) down = box.top - marginY - view.top;
+
+    if (box.right + marginX > view.right) across = box.right + marginX - view.right;
+    else if (box.left - marginX < view.left) across = box.left - marginX - view.left;
+
+    /* Przeglądarka sama przycina przewijanie do zakresu, więc ostatni element
+       formularza nadal da się pokazać — tyle że nie przy samej krawędzi. */
+    if (down) parent.scrollTop += down;
+    if (across) parent.scrollLeft += across;
+
+    /* Zapamiętane miejsce fokusu musi być aktualne po dosunięciu ekranu. */
+    if ((down || across) && focusAnchor && focusAnchor.el === element) {
+      focusAnchor = { el: element, box: element.getBoundingClientRect() };
+    }
+  }
+
   /* nawigacja pilotem: wybiera najbliższy element w kierunku strzałki */
   function focusNearest(keyCode) {
     var current = document.activeElement;
@@ -3349,12 +3419,25 @@
     }
     if (!candidates.length) return;
 
-    if (!current || candidates.indexOf(current) < 0) {
+    /* Punkt odniesienia: sfokusowany element. Gdy fokus zniknął, bo przycisk
+       został wyłączony albo ukryty (tak działo się z „Pobierz i zainstaluj”
+       po ruszeniu pobierania), liczymy od jego ostatniego miejsca na ekranie —
+       inaczej nawigacja wracała na sam początek ustawień i nie było jak
+       zjechać do opisu zmian ani do „Zapisz i pobierz”. */
+    var box = null;
+    if (current && candidates.indexOf(current) >= 0) {
+      box = current.getBoundingClientRect();
+    } else if (focusAnchor && focusAnchor.el && focusAnchor.el.parentNode &&
+               (focusAnchor.el.disabled || focusAnchor.el.offsetParent === null)) {
+      box = focusAnchor.box;
+    }
+
+    if (!box || (!box.width && !box.height)) {
       candidates[0].focus();
+      keepInView(candidates[0]);
       return;
     }
 
-    var box = current.getBoundingClientRect();
     var cx = box.left + box.width / 2;
     var cy = box.top + box.height / 2;
     var best = null;
@@ -3389,7 +3472,7 @@
 
     if (best) {
       best.focus();
-      best.scrollIntoView(false);
+      keepInView(best);
     }
   }
 
@@ -4351,6 +4434,20 @@
      37–40, OK 13, okno DPAD_CENTER 23), a dodatkowo kody specyficzne dla webOS
      (Wstecz 461, pauza 19, play 415, przewijanie 412/417) — i tylko tam, gdzie
      faktycznie występują, żeby nie kolidowały ze strzałkami Fire TV. */
+
+  /* Ostatnie miejsce fokusu. Gdy przycisk zniknie albo przestanie być dostępny
+     (tak jest z „Pobierz i zainstaluj” w trakcie pobierania paczki), system
+     oddaje fokus ciału strony — bez zapamiętanego miejsca nawigacja pilotem nie
+     wiedziała, gdzie była, i wracała na sam początek ustawień. */
+  var focusAnchor = null;
+
+  document.addEventListener("focusin", function (event) {
+    var element = event.target;
+    if (!element || !element.getBoundingClientRect) return;
+    var box = element.getBoundingClientRect();
+    if (!box.width && !box.height) return;
+    focusAnchor = { el: element, box: box };
+  });
 
   var WEBOS_KEYS = platformInfo.os === "webos";
 

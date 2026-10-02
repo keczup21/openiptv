@@ -452,6 +452,10 @@ aside {
 
 /* sekcja „AKTUALIZACJE" */
 .update-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 12px; }
+/* Przycisk w trakcie pobierania paczki: przygaszony, ale nadal w nawigacji
+   pilotem — `disabled` zabierało fokus i wyrzucało na początek ustawień
+   (patrz setButtonBusy w app.js). */
+.update-row button.busy { opacity: .55; }
 /* informacja o nowszej wersji w nagłówku ekranu głównego (po włączeniu) */
 .update-notice { color: var(--ok); font-weight: 600; }
 

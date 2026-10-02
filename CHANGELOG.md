@@ -15,6 +15,37 @@ samego podbicia numeru (miejsca z numerem opisuje akapit wyżej). Opis wydania n
 GitHubie powstaje z tego wpisu: `npm run notes` (`scripts/release-notes.js`)
 bierze z changeloga tylko sekcję wydawanej wersji.
 
+## [1.21.1] — 2026-10-03
+
+### Naprawiono
+- **Fokus nie ucieka na początek ustawień po naciśnięciu „Pobierz i zainstaluj”.**
+  W trakcie pobierania paczki oba przyciski sekcji AKTUALIZACJE dostawały
+  `disabled`, a wyłączony przycisk oddaje fokus ciału strony — pierwsze
+  naciśnięcie strzałki startowało więc od pierwszego pola formularza i nie było
+  jak zjechać do opisu zmian ani do „Zapisz i pobierz”. Teraz są tylko przygaszone
+  (klasa `.busy` w `www/styles.css`, `setButtonBusy()` w `www/app.js`), zostają w
+  nawigacji pilotem, a przed drugim wywołaniem nadal chroni `updateState.busy`.
+- **Ekran dosuwa się o brakujący kawałek, a nie do samej krawędzi.** Nawigacja
+  pilotem kończyła się `scrollIntoView(false)`, czyli wyrównaniem przycisku do
+  dolnej krawędzi: przewijanie szło „po schodkach”, a po dojechaniu na „Pobierz i
+  zainstaluj” wszystko pod nim — stan pobierania, ostatnie zmiany i przyciski na
+  dole ustawień — lądowało poza ekranem. `keepInView()` (nowe w `www/app.js`)
+  przesuwa ekran tylko wtedy, gdy element nie mieści się w zapasie (25% wysokości,
+  maks. 200 px), i tylko o brakujący kawałek, więc pod sfokusowanym przyciskiem
+  widać sąsiednie wiersze. Element już widoczny nie rusza ekranu wcale.
+- **Zgubiony fokus liczy od miejsca, w którym był.** Gdy przycisk zniknie albo
+  przestanie być dostępny, przeglądarka przenosi fokus na ciało strony i nawigacja
+  wracała na początek ekranu. Ostatnie miejsce fokusu pamięta teraz `focusin`
+  (`focusAnchor` w `www/app.js`), więc strzałka idzie dalej od tego miejsca, a nie
+  od góry ustawień.
+
+### Zmieniono
+- **Testy pilnują przewijania i przycisków aktualizacji.** `npm run test:nav`
+  sprawdza `keepInView()` na atrapie ekranu (zapas pod elementem, brak skoku dla
+  wiersza widocznego z zapasem, powrót z zapasem od górnej krawędzi, kontener bez
+  przewijania, brak wywrotki na atrapie elementu) oraz to, że przyciski sekcji
+  AKTUALIZACJE nie używają już `disabled`, a fokus jest zapamiętywany.
+
 ## [1.21.0] — 2026-10-03
 
 ### Dodano
