@@ -9,6 +9,19 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/), wersje wg [Sem
 `www/appinfo.json`, `package.json`, `android/app/build.gradle`) podbija jedna
 komenda: `npm run bump -- X.Y.Z`.
 
+## [1.19.4] — 2026-10-02
+
+### Naprawiono
+- **Sprawdzanie aktualizacji na Fire TV / Androidzie działa.** Gdy GitHub
+  odpowiedział „application/json”, natywne pobieranie oddawało gotowy obiekt
+  zamiast tekstu, więc aplikacja mówiła „panel Xtream zwrócił nieprawidłową
+  odpowiedź”. Teraz JSON czytany jest poprawnie, a komunikat o panelu dotyczy
+  tylko panelu.
+
+### Dodano
+- **Informacja o nowszej wersji po włączeniu.** Numer nowej wersji widać
+  w nagłówku ekranu głównego, pod numerem wersji — nie tylko w ustawieniach.
+
 ## [1.19.3] — 2026-10-02
 
 ### Dodano

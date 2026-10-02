@@ -448,6 +448,9 @@ aside {
 
 /* sekcja „AKTUALIZACJE" */
 .update-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 12px; }
+/* informacja o nowszej wersji w nagłówku ekranu głównego (po włączeniu) */
+.update-notice { color: var(--ok); font-weight: 600; }
+
 .update-status { margin: 0 0 22px; color: var(--muted); font-size: 17px; line-height: 1.45; overflow-wrap: break-word; }
 .update-status.busy { color: var(--accent); }
 .update-status.ok { color: var(--ok); }

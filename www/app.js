@@ -21,7 +21,7 @@
      był natychmiastowy i nie przepisywał za każdym razem megabajtów danych. */
   var BLOBS_KEY = "openiptvBlobs";
   var BLOB_FIELDS = ["playlistFileText", "epgFileText", "playlistFileName", "epgFileName"];
-  var APP_VERSION = "1.19.3";
+  var APP_VERSION = "1.19.4";
   var SCHEMA_VERSION = 4;
 
   /* „Ostatnio oglądane”: kanał trafia na listę po 10 s oglądania,
@@ -268,6 +268,8 @@
     update_err: "Nie udało się zaktualizować: {msg}",
     update_err_data: "GitHub nie zwrócił informacji o wydaniu.",
     update_err_404: "GitHub nie widzi wydań tej aplikacji (HTTP 404). Sprawdzanie aktualizacji w aplikacji działa tylko wtedy, gdy repozytorium i wydania są publiczne.",
+    update_err_json: "GitHub zwrócił nieprawidłową odpowiedź (oczekiwano JSON).",
+    update_notice: "Nowa wersja {latest} (masz {current}) — Ustawienia → Aktualizacje.",
     update_err_unknown: "nieznany błąd"
   };
 
@@ -393,6 +395,8 @@
     update_err: "Update failed: {msg}",
     update_err_data: "GitHub returned no release information.",
     update_err_404: "GitHub cannot see this app's releases (HTTP 404). The in-app update check works only when the repository and its releases are public.",
+    update_err_json: "GitHub returned an invalid response (expected JSON).",
+    update_notice: "New version {latest} (you have {current}) — Settings → Updates.",
     update_err_unknown: "unknown error"
   };
 
@@ -948,6 +952,23 @@
     if (install) install.classList.add("hidden");
   }
 
+  /* Informacja pod nazwą aplikacji, w nagłówku ekranu głównego: po włączeniu
+     widać, że jest nowsza wersja i gdzie po nią pójść. Nic się nie pobiera
+     ani nie instaluje bez naciśnięcia przycisku w ustawieniach. */
+  function showUpdateNotice(latest) {
+    var el = $("updateNotice");
+    if (!el) return;
+    el.textContent = t("update_notice", { latest: latest, current: APP_VERSION });
+    el.classList.remove("hidden");
+  }
+
+  function hideUpdateNotice() {
+    var el = $("updateNotice");
+    if (!el) return;
+    el.textContent = "";
+    el.classList.add("hidden");
+  }
+
   function updateErrorText(error) {
     if (error && error.message) return error.message;
     return t("update_err_unknown");
@@ -996,12 +1017,16 @@
       updateState.asset = null;
       hideInstallButton();
       hideUpdateNotes();
+      hideUpdateNotice();
       if (!silent) setUpdateStatus(t("update_current", { version: APP_VERSION }), "ok");
       return;
     }
 
     var asset = updateAssetFor(release, updateExtension());
     updateState.asset = asset;
+
+    /* informacja na ekranie głównym — sam numer nowszej wersji */
+    showUpdateNotice(latest);
 
     var message = t("update_available", { latest: latest, current: APP_VERSION });
     var size = updateSizeLabel(asset);
@@ -1030,7 +1055,7 @@
     if (updateState.busy) return;
 
     if (silent) {
-      fetchJson(UPDATE_API).then(function (release) {
+      fetchJson(UPDATE_API, "update_err_json").then(function (release) {
         try {
           applyRelease(release, $("installUpdate"), true);
         } catch (error) {
@@ -1047,7 +1072,7 @@
     hideUpdateNotes();
     setUpdateStatus(t("update_checking"), "busy");
 
-    fetchJson(UPDATE_API).then(function (release) {
+    fetchJson(UPDATE_API, "update_err_json").then(function (release) {
       setUpdateBusy(false);
       try {
         applyRelease(release, $("installUpdate"));
@@ -1133,7 +1158,13 @@
         e.isHttp = true;
         throw e;
       }
-      if (!asArrayBuffer) return res.data;
+      /* Capacitor zwraca już sparsowany JSON, gdy serwer odpowiedział
+         „application/json” (tak robi GitHub API), a nasze ścieżki tekstowe
+         czytają string — obiekt wraca więc do postaci tekstu */
+      if (!asArrayBuffer) {
+        if (res.data && typeof res.data === "object") return JSON.stringify(res.data);
+        return res.data;
+      }
       if (res.data instanceof ArrayBuffer) return res.data;
       if (res.data && res.data.buffer instanceof ArrayBuffer) return res.data;
       if (typeof res.data === "string") return base64ToUint8Array(res.data);
@@ -1229,12 +1260,17 @@
     });
   }
 
-  function fetchJson(url) {
+  /* `errorKey` mówi, czyjego adresu dotyczy odpowiedź — panelu Xtream czy
+     GitHuba (aktualizacje). Bez tego każdy zły JSON zrzucał winę na panel.
+     Natywne HTTP oddaje gotowy obiekt, gdy serwer odpowiedział
+     „application/json”, więc obiekt przechodzi bez zmian. */
+  function fetchJson(url, errorKey) {
     return fetchText(url).then(function (text) {
+      if (text && typeof text === "object") return text;
       try {
         return JSON.parse(text);
       } catch (e) {
-        throw new Error("Panel Xtream zwrócił nieprawidłową odpowiedź (oczekiwano JSON).");
+        throw new Error(t(errorKey || "err_xtream_json"));
       }
     });
   }
@@ -4009,8 +4045,13 @@
   var settingsVersionEl = $("settingsVersion");
   if (settingsVersionEl) settingsVersionEl.textContent = "OpenIPTV v" + APP_VERSION;
 
-  if (settings.profiles.length) loadCatalog();
-  else openSettings();
+  if (settings.profiles.length) {
+    loadCatalog();
+    /* ciche sprawdzenie po włączeniu: pokaże tylko numer nowszej wersji */
+    checkForUpdates(true);
+  } else {
+    openSettings();
+  }
 })();
 
 
