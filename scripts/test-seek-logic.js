@@ -15,6 +15,23 @@ if (iStart < 0 || iEnd < 0) throw new Error("Nie znalazlem bloku przewijania w a
 const code = src.slice(src.lastIndexOf("\n\n", iStart) + 2, src.lastIndexOf("\n\n", iEnd) + 2);
 if (code.indexOf("function timeshiftBack") < 0) throw new Error("Wyciety blok nie ma timeshiftBack");
 
+/* Blok sterowania obrazem: ⏵‖ / pauza na zywo, wznowienie z catch-upu, wyciszenie
+   (pilot: play/pauza, 🔇) — od togglePlayPause() do restartWatching(). */
+const cStart = src.indexOf("function togglePlayPause()");
+const cEnd = src.indexOf("function restartWatching(");
+if (cStart < 0 || cEnd < 0) throw new Error("Nie znalazlem bloku sterowania obrazem w app.js");
+const codeCtrl = src.slice(src.lastIndexOf("\n\n", cStart) + 2, src.lastIndexOf("\n\n", cEnd) + 2);
+if (codeCtrl.indexOf("function resumePlayback") < 0 || codeCtrl.indexOf("function toggleMute") < 0) {
+  throw new Error("Wyciety blok sterowania obrazem nie ma resumePlayback/toggleMute");
+}
+
+/* Blok przelaczania kanalow ▲ ▼ (CH+ / CH−): zapChannel() + listIndex(). */
+const zStart = src.indexOf("function zapChannel(");
+const zEnd = src.indexOf("function showPlayerError(");
+if (zStart < 0 || zEnd < 0) throw new Error("Nie znalazlem bloku przelaczania kanalow w app.js");
+const codeZap = src.slice(src.lastIndexOf("\n\n", zStart) + 2, src.lastIndexOf("\n\n", zEnd) + 2);
+if (codeZap.indexOf("function listIndex") < 0) throw new Error("Wyciety blok nie ma listIndex");
+
 const NOW = 1700000000000;
 const CH = { name: "TVN", streamUrl: "http://host/live/u/p/12345.ts" };
 
@@ -57,6 +74,66 @@ function harness(o) {
   vm.createContext(sandbox);
   vm.runInContext(code, sandbox);
   return { api: sandbox, calls: calls, video: video };
+}
+
+/* Otoczenie dla bloku sterowania obrazem: obraz (pauza, wyciszenie) + decyzje
+   o wznowieniu na kanale na zywo (catch-up) i w archiwum. */
+function ctrlHarness(o) {
+  o = o || {};
+  const calls = { play: [], played: 0, paused: 0, osd: 0 };
+  const video = {
+    paused: !!o.paused,
+    muted: !!o.muted,
+    pause: function () { calls.paused++; this.paused = true; },
+    play: function () { calls.played++; this.paused = false; return { catch: function () {} }; }
+  };
+  const sandbox = {
+    RESUME_AFTER_PAUSE: 1500,
+    state: {
+      watchChannel: o.noChannel ? null : CH,
+      watchProgram: o.program || null,
+      isArchive: !!o.isArchive,
+      livePauseAt: o.livePauseAt || 0
+    },
+    $: function (id) {
+      if (id === "video") return video;
+      return { style: {}, textContent: "", classList: { remove: function () {}, add: function () {} } };
+    },
+    playChannel: function (channel, program, screen) { calls.play.push({ channel: channel, program: program, screen: screen }); },
+    hasArchive: function () { return o.hasArchive !== false; },
+    currentProgram: function () { return o.epg || null; },
+    showOsd: function () { calls.osd++; },
+    updateOsd: function () {},
+    scheduleOsdHide: function () {},
+    t: function (k) { return k; },
+    Date: { now: function () { return NOW; } }
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(codeCtrl, sandbox);
+  return { api: sandbox, calls: calls, video: video };
+}
+
+/* Otoczenie dla przelaczania kanalow ▲ ▼: playlista, kategoria i klucz kanalu. */
+function zapHarness(o) {
+  o = o || {};
+  const calls = { play: [] };
+  const list = o.list || [
+    { name: "A", streamUrl: "http://host/live/u/p/1.ts" },
+    { name: "B", streamUrl: "http://host/live/u/p/2.ts" },
+    { name: "C", streamUrl: "http://host/live/u/p/3.ts" }
+  ];
+  const sandbox = {
+    state: {
+      watchChannel: o.watching || list[0],
+      channels: o.channels || list,
+      listItems: o.listItems || list
+    },
+    keyOf: function (channel) { return channel ? String(channel.streamUrl) : ""; },
+    playChannel: function (channel, program, screen) { calls.play.push({ channel: channel, program: program, screen: screen }); }
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(codeZap, sandbox);
+  return { api: sandbox, calls: calls, list: list };
 }
 
 /* --- 1. kanal na zywo --------------------------------------------------- */
@@ -172,6 +249,124 @@ h.api.seekBy(1);
 check("to samo w druga strone: tez tylko pasek",
   h.calls.osd === 1 && h.calls.goLive === 0 && h.calls.play.length === 0,
   JSON.stringify(h.calls));
+
+/* --- 6. pauza i wznowienie kanalu na zywo (pilot: pauza, play) ---------- */
+let z;
+h = ctrlHarness({ isArchive: false, paused: false, epg: { title: "Wiadomosci" } });
+h.api.pausePlayback();
+check("pauza na kanale na zywo: obraz staje, chwila zatrzymania zapamietana",
+  h.video.paused === true && h.calls.paused === 1 && h.api.state.livePauseAt === NOW,
+  "livePauseAt=" + h.api.state.livePauseAt + " paused=" + h.calls.paused);
+
+h = ctrlHarness({ isArchive: true, paused: false, program: { start: NOW - 600000, end: NOW, title: "P" } });
+h.api.pausePlayback();
+check("pauza w nagraniu: znacznik pauzy na zywo zostaje pusty",
+  h.video.paused === true && h.api.state.livePauseAt === 0,
+  "livePauseAt=" + h.api.state.livePauseAt);
+
+/* po dluzszej pauzie kanal na zywo uciekl do przodu — wznowienie wraca do
+   chwili zatrzymania przez okno catch-up konczace sie na „teraz” */
+h = ctrlHarness({ isArchive: false, paused: true, livePauseAt: NOW - 60000, epg: { title: "Wiadomosci" } });
+h.api.resumePlayback();
+p = h.calls.play[0];
+check("wznowienie po dlugiej pauzie: catch-up od chwili zatrzymania do teraz",
+  h.calls.play.length === 1 && !!p && p.program.start === NOW - 60000 && p.program.end === NOW &&
+  p.program.timeshift === true && p.program.title === "Wiadomosci" && p.screen === "playerScreen" &&
+  h.api.state.livePauseAt === 0,
+  JSON.stringify(h.calls.play));
+
+h = ctrlHarness({ isArchive: false, paused: true, livePauseAt: NOW - 800, epg: { title: "Wiadomosci" } });
+h.api.resumePlayback();
+check("wznowienie po krotkiej pauzie: lecimy dalej tym samym strumieniem",
+  h.calls.played === 1 && h.calls.play.length === 0,
+  "played=" + h.calls.played + " play=" + h.calls.play.length);
+
+h = ctrlHarness({ isArchive: false, paused: true, livePauseAt: NOW - 60000, hasArchive: false });
+h.api.resumePlayback();
+check("kanal bez archiwum: zwykle wznowienie nawet po dlugiej pauzie",
+  h.calls.played === 1 && h.calls.play.length === 0,
+  "played=" + h.calls.played + " play=" + h.calls.play.length);
+
+h = ctrlHarness({ isArchive: false, paused: true, livePauseAt: 0 });
+h.api.resumePlayback();
+check("wznowienie bez zapamietanej pauzy: bez przeadowania",
+  h.calls.played === 1 && h.calls.play.length === 0,
+  "played=" + h.calls.played + " play=" + h.calls.play.length);
+
+/* ⏵‖ jednym klawiszem: zatrzymany obraz wznawia, lecacy zatrzymuje */
+h = ctrlHarness({ isArchive: false, paused: true, livePauseAt: NOW - 800 });
+h.api.togglePlayPause();
+check("play/pauza na zatrzymanym obrazie: wznawia", h.calls.played === 1 && h.calls.paused === 0,
+  "played=" + h.calls.played + " paused=" + h.calls.paused);
+
+h = ctrlHarness({ isArchive: false, paused: false });
+h.api.togglePlayPause();
+check("play/pauza na lecacym obrazie: zatrzymuje i zapamietuje chwile",
+  h.calls.paused === 1 && h.api.state.livePauseAt === NOW,
+  "paused=" + h.calls.paused + " livePauseAt=" + h.api.state.livePauseAt);
+
+/* --- 7. wyciszenie (🔇 na pilocie) -------------------------------------- */
+h = ctrlHarness({ muted: false });
+check("na starcie dzwiek gra, etykieta przycisku zacheca do wyciszenia",
+  h.api.isMuted() === false && h.api.muteLabel() === "osd_mute",
+  h.api.muteLabel());
+
+h.api.toggleMute();
+check("🔇 na pilocie: obraz wyciszony, etykieta proponuje wlaczenie dzwieku",
+  h.video.muted === true && h.api.isMuted() === true && h.api.muteLabel() === "osd_unmute" &&
+  h.calls.osd === 1,
+  h.api.muteLabel() + " osd=" + h.calls.osd);
+
+h.api.toggleMute();
+check("ponowne 🔇: dzwiek wraca", h.video.muted === false && h.api.muteLabel() === "osd_mute",
+  h.api.muteLabel());
+
+/* --- 8. przelaczanie kanalow ▲ ▼ (CH+ / CH−) ---------------------------- */
+z = zapHarness({ watching: { name: "B", streamUrl: "http://host/live/u/p/2.ts" } });
+z.api.zapChannel(1);
+check("▼ nizej: nastepny kanal z listy, na zywo (bez nagrania)",
+  z.calls.play.length === 1 && z.calls.play[0].channel.name === "C" &&
+  z.calls.play[0].program === null && z.calls.play[0].screen === "playerScreen",
+  JSON.stringify(z.calls.play));
+
+z = zapHarness({ watching: { name: "B", streamUrl: "http://host/live/u/p/2.ts" } });
+z.api.zapChannel(-1);
+check("▲ wyzej: poprzedni kanal z listy",
+  z.calls.play.length === 1 && z.calls.play[0].channel.name === "A",
+  JSON.stringify(z.calls.play));
+
+z = zapHarness({ watching: { name: "A", streamUrl: "http://host/live/u/p/1.ts" } });
+z.api.zapChannel(-1);
+check("▲ na poczatku listy: zawija na ostatni kanal",
+  z.calls.play.length === 1 && z.calls.play[0].channel.name === "C",
+  JSON.stringify(z.calls.play));
+
+z = zapHarness({ watching: { name: "C", streamUrl: "http://host/live/u/p/3.ts" } });
+z.api.zapChannel(1);
+check("▼ na koncu listy: zawija na pierwszy kanal",
+  z.calls.play.length === 1 && z.calls.play[0].channel.name === "A",
+  JSON.stringify(z.calls.play));
+
+z = zapHarness({ watching: { name: "Obcy", streamUrl: "http://inny/kanal.ts" } });
+z.api.zapChannel(1);
+check("kanalu nie ma w playliscie: nie przelaczamy na przypadkowy",
+  z.calls.play.length === 0, JSON.stringify(z.calls.play));
+
+const cats = [
+  { name: "A", streamUrl: "http://host/u/p/1.ts" },
+  { name: "B", streamUrl: "http://host/u/p/2.ts" },
+  { name: "C", streamUrl: "http://host/u/p/3.ts" }
+];
+z = zapHarness({ watching: cats[1], listItems: [cats[0], cats[2]], channels: cats });
+z.api.zapChannel(1);
+check("kanal z innej kategorii niz widoczna: szukamy w calej playliscie",
+  z.calls.play.length === 1 && z.calls.play[0].channel.name === "C",
+  JSON.stringify(z.calls.play));
+
+z = zapHarness({ list: [{ name: "A", streamUrl: "http://host/u/p/1.ts" }] });
+z.api.zapChannel(1);
+check("jeden kanal w playliscie: nic nie przelaczamy",
+  z.calls.play.length === 0, JSON.stringify(z.calls.play));
 
 console.log("");
 if (fails) { console.log("BLEDY: " + fails); process.exit(1); }

@@ -41,7 +41,8 @@
       </div>
       <div id="m3uFileSection" class="hidden">
         <div class="file-source">
-          <label class="file-picker" tabindex="0"><span data-i18n="pick_m3u_file">Wybierz plik M3U</span><input id="playlistFile" type="file" accept=".m3u,.m3u8,audio/x-mpegurl,application/vnd.apple.mpegurl,text/plain"></label>
+          <button type="button" id="pickPlaylistFile" class="file-picker" tabindex="0" data-i18n="pick_m3u_file">Wybierz plik M3U</button>
+          <input id="playlistFile" class="file-input" type="file" accept=".m3u,.m3u8,audio/x-mpegurl,application/vnd.apple.mpegurl,text/plain">
           <span id="selectedPlaylistFile" data-i18n="add_local_file">dodaj lokalny plik</span>
         </div>
       </div>
@@ -53,7 +54,8 @@
       </div>
       <label><span data-i18n="epg_url">EPG XMLTV (opcjonalny — Xtream pobiera go sam)</span><input id="epgUrl" tabindex="0" type="url" placeholder="https://…/epg.xml"></label>
       <div class="file-source">
-        <label class="file-picker" tabindex="0"><span data-i18n="pick_epg_file">Wybierz plik EPG</span><input id="epgFile" type="file" accept=".xml,.xmltv,.gz,text/xml,application/xml,application/gzip"></label>
+        <button type="button" id="pickEpgFile" class="file-picker" tabindex="0" data-i18n="pick_epg_file">Wybierz plik EPG</button>
+        <input id="epgFile" class="file-input" type="file" accept=".xml,.xmltv,.gz,text/xml,application/xml,application/gzip">
         <button id="useEpgLink" tabindex="0" class="hidden" data-i18n="use_link">Użyj linku</button>
         <span id="selectedEpgFile" data-i18n="add_local_epg">lub dodaj lokalny plik XMLTV</span>
       </div>
@@ -90,10 +92,26 @@
           <option value="3" selected data-i18n="attempt3">3 próby</option><option value="5" data-i18n="attempt5">5 prób</option><option value="10" data-i18n="attempt10">10 prób</option>
         </select>
       </label>
-      <label class="check-row"><input id="dpadSeek" tabindex="0" type="checkbox" checked><span data-i18n="dpad_seek">Lewo/prawo przewija archiwum</span></label>
+      <label class="check-row"><input id="dpadSeek" tabindex="0" type="checkbox" checked><span data-i18n="dpad_seek">Strzałki sterują transmisją: ◀ ▶ przewija, ▲ ▼ zmienia kanał</span></label>
       <h2 data-i18n="advanced">ZAAWANSOWANE (OPCJONALNE)</h2>
       <label><span data-i18n="catchup_template">Globalny szablon catch-up</span><input id="catchupTemplate" tabindex="0" type="text" placeholder="…start={utc}&end={utcend}"></label>
       <label class="check-row"><input id="catchupAll" tabindex="0" type="checkbox" checked><span data-i18n="catchup_all">Catch-up na wszystkich kanałach (HLS)</span></label>
+      <h2 data-i18n="player_keys">PILOT W ODTWARZACZU</h2>
+      <p class="hint" data-i18n="player_keys_hint">Tak działa pilot, gdy leci kanał albo archiwum. Ustawienie „◀ ▶ przewija” dotyczy tylko strzałek — ⏪ ⏩ przewijają zawsze. Na dotykowym ekranie te same akcje są na pasku u dołu obrazu.</p>
+      <table class="keys-table">
+        <tbody>
+          <tr><th scope="row"><kbd>OK</kbd></th><td data-i18n="key_ok_short">Pasek z nazwą kanału, programem i postępem: pokaż albo schowaj.</td></tr>
+          <tr><th scope="row"><kbd>OK</kbd></th><td data-i18n="key_ok_hold">Przytrzymaj około sekundy: menu opcji kanału (ulubione, archiwum, program TV, od początku, cisza).</td></tr>
+          <tr><th scope="row"><kbd>MENU</kbd></th><td data-i18n="key_menu">To samo menu opcji kanału, bez trzymania OK.</td></tr>
+          <tr><th scope="row"><kbd>▲ ▼</kbd></th><td data-i18n="key_updown">Następny i poprzedni kanał z widocznej listy (jak CH+ / CH−), z zawijaniem na końcach. Jedno naciśnięcie to jedna zmiana.</td></tr>
+          <tr><th scope="row"><kbd>◀ ▶</kbd></th><td data-i18n="key_leftright">Przewijanie o krok z ustawienia „Krok przewijania archiwum”: na nagraniu skok w tył i w przód, na kanale na żywo ◀ wchodzi w catch-up, a ▶ wznawia zatrzymany obraz.</td></tr>
+          <tr><th scope="row"><kbd>⏪ ⏩</kbd></th><td data-i18n="key_rewff">Przewijanie pilota działa zawsze, także przy wyłączonych strzałkach; ⏩ na końcu programu wraca na żywo.</td></tr>
+          <tr><th scope="row"><kbd>⏵‖</kbd></th><td data-i18n="key_playpause">Pauza i wznowienie. Po dłuższej pauzie kanał na żywo wraca do chwili zatrzymania przez catch-up, a bez archiwum obraz dogania transmisję.</td></tr>
+          <tr><th scope="row"><kbd>⏹</kbd></th><td data-i18n="key_stop">Zatrzymanie obrazu — to samo co pauza.</td></tr>
+          <tr><th scope="row"><kbd>🔇</kbd></th><td data-i18n="key_mute">Cisza w odtwarzaczu; głośność telewizora zostaje bez zmian.</td></tr>
+          <tr><th scope="row"><kbd data-i18n="key_back">Wstecz</kbd></th><td data-i18n="key_back_desc">Zamyka menu albo pasek; z obrazu wraca do listy kanałów, a z listy pyta „Wyjdź z aplikacji?”.</td></tr>
+        </tbody>
+      </table>
       <h2 data-i18n="appearance">WYGLĄD I JĘZYK</h2>
       <label class="row-label"><span data-i18n="language">Język</span>
         <select id="language" tabindex="0">
@@ -134,7 +152,10 @@
       </div>
       <p id="updateStatus" class="update-status"></p>
       <p id="updateNotes" class="update-notes hidden"></p>
-      <button id="saveSettings" tabindex="0" data-i18n="save">Zapisz i pobierz</button>
+      <div class="settings-actions">
+        <button id="saveSettings" tabindex="0" data-i18n="save">Zapisz i pobierz</button>
+        <button id="settingsBack" tabindex="0" data-i18n="back">Wstecz</button>
+      </div>
       <p id="settingsError" class="error"></p>
       <p id="settingsVersion" class="app-version"></p>
     </section>
@@ -152,9 +173,9 @@
           <input id="searchInput" tabindex="0" type="text" placeholder="Szukaj" data-i18n-placeholder="search">
         </div>
         <select id="profileSwitcher" tabindex="0"></select>
-        <button id="openGuide" tabindex="0">EPG</button>
-        <button id="reload" tabindex="0" class="icon-button" title="Odśwież" data-i18n-title="refresh"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.71"/><path d="M21 3v6h-6"/></svg></button>
-        <button id="openSettings" tabindex="0" class="icon-button" title="Ustawienia" data-i18n-title="settings"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+        <button id="openGuide" tabindex="0" class="labeled-button" title="Program TV (EPG)" data-i18n-title="guide_title"><svg class="icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="17" rx="2"/><path d="M16 2.5v4M8 2.5v4M3 10.5h18"/></svg><span>EPG</span></button>
+        <button id="reload" tabindex="0" class="icon-button" title="Odśwież" data-i18n-title="refresh"><svg class="icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.71"/><path d="M21 3v6h-6"/></svg></button>
+        <button id="openSettings" tabindex="0" class="labeled-button" title="Ustawienia" data-i18n-title="settings"><svg class="icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span data-i18n="settings">Ustawienia</span></button>
       </nav>
     </header>
     <section class="browser-grid">

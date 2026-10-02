@@ -16,7 +16,8 @@ Odtwarzacz M3U z EPG/XMLTV i obsługą paneli Xtream Codes:
   ze znaczników czasu,
 - ulubione, ostatnio oglądane, wyszukiwarka, profile źródeł,
 - interfejs po polsku i angielsku, motyw jasny i ciemny, tryb TV z obsługą
-  pilota oraz wspólna obsługa klawisza Wstecz,
+  pilota oraz wspólna obsługa klawisza Wstecz (z pytaniem o wyjście zamiast
+  zamykania aplikacji z przypadku),
 - rozmiar interfejsu dobierany do rozdzielczości ekranu (720p / 1080p / 4K)
   albo wybierany ręcznie w 100–150% — dla czytelności z dużej odległości,
 - aktualizacja bez przymusu: ustawienia tylko pokazują, że jest nowsza wersja
@@ -42,6 +43,99 @@ razu: szerokość układu ustawia się jeszcze przed pierwszym rysowaniem strony
 a gdy telewizor zmieni rozdzielczość w trakcie pracy, układ przelicza się sam.
 W przeglądarce na komputerze skalę robi zoom CSS.
 
+## Pilot w odtwarzaczu
+
+Podczas oglądania kanału (na żywo i w archiwum) pilot działa jak w telewizorze —
+bez wchodzenia fokusem w przyciski:
+
+| Klawisz | Co robi |
+|---|---|
+| `▲` `▼` (CH+ / CH−) | następny / poprzedni kanał z listy, którą widzisz (z kategorii, wyszukiwania), z zawijaniem na końcach |
+| `◀` `▶` / `⏪` `⏩` | przewijanie o krok z ustawień; w archiwum skok, na kanale na żywo `⏪` wchodzi w catch-up, a `▶` na zatrzymanym obrazie wznawia od miejsca pauzy |
+| `OK` | pokaż / schowaj pasek informacyjny (mini-EPG kanału) |
+| `OK` przytrzymane, `MENU` | opcje kanału i obrazu (od początku, poprzedni/następny program, na żywo, cisza, EPG, ulubione) |
+| `⏵` `⏸` / `⏹` | pauza i wznowienie. Po dłuższej pauzie kanał na żywo jest wznawiany z archiwum dokładnie od chwili zatrzymania (jeśli kanał ma archiwum), a nie od bieżącej sceny |
+| `🔇` | cisza / dźwięk (wyciszenie strumienia; głośność telewizora należy do sprzętu) |
+| `Wstecz` | `EPG` wraca do obrazu, obraz do listy, a na liście pokazuje pytanie „Wyjdź z aplikacji?” — dopiero tam wyjście kończy aplikację |
+
+Fokus na przycisku paska zmienia strzałki w nawigację po pasku (tak działa mysz,
+dotyk i pilot z fokusem) — na obrazie strzałki zostają przy transmisji.
+Długie przytrzymanie `▲` `▼` nie przełącza kanałów seriami: jedno naciśnięcie = jedna zmiana.
+
+Ta sama instrukcja jest w aplikacji, na telewizorze: **Ustawienia → „PILOT W ODTWARZACZU”**
+(tabela klawiszy po polsku i angielsku, razem z krótkim opisem każdej akcji).
+
+**Wyjście z aplikacji** (`Wstecz` na liście kanałów) potwierdza się przyciskiem.
+Na Android TV / Fire TV zamknięcie okna z tej strony robi most
+`OpenIptvNative.quit()` z `MainActivity` (samo `window.close()` w WebView jest
+ignorowane), na webOS i Tizenie kończy aplikację platforma, a w zwykłej
+przeglądarce zostaje podpowiedź, że okno zamyka użytkownik. `Wstecz`
+w ustawieniach wychodzi **bez zapisu**.
+
+## Pilot na liście kanałów (menu główne)
+
+Lista kanałów to ekran startowy: z boku grupy, obok kanały, u góry szukanie,
+`EPG`, odświeżanie i ustawienia. Pod listą jest pasek przypominający klawisze
+pilot, a fokus chodzi po przyciskach jak po stronie — bez myszki:
+
+| Klawisz | Co robi |
+|---|---|
+| `◀` `▲` `▼` `▶` | przejście do najbliższego przycisku w tym kierunku (grupy, kanały, pasek u góry) |
+| `OK` | wybór: na grupie pokazuje jej kanały i od razu wchodzi w listę, na kanale włącza obraz |
+| `OK` przytrzymane, `MENU` | opcje kanału (ulubione, archiwum, program TV, od początku, cisza) |
+
+Grupa zmienia się **tylko po naciśnięciu `OK`** — samo dojechanie fokusem na
+przycisk grupy nie przełącza już listy kanałów, więc przewijanie kanałów nie
+przerzuca na inną kategorię. Po wczytaniu playlisty (i po zapisaniu ustawień)
+fokus wchodzi od razu w listę kanałów — nigdy w pole szukania, żeby na
+telewizorze nie wyskakiwała z niego klawiatura ekranowa.
+
+Z pola **Szukaj** też da się wyjść: `▼` przechodzi do listy kanałów, `▶` przy
+końcu wpisanego tekstu do następnego pola paska, a `◀` — gdy kursor stoi na
+początku zapytania — do listy grup. W środku tekstu `◀` `▶` przesuwają kursor,
+więc zapytanie poprawia się jak na komputerze.
+
+Ikony przycisków (`EPG`, zębatka, odświeżanie, pasek odtwarzacza, gwiazdki
+ulubionych i archiwum na kafelkach) są rysowane jako SVG, a nie znakami emoji:
+na dekoderach telewizyjnych czcionka emoji bywa okrojona i z ikony zostawała
+kropka. Podpowiedź pilota pod listą to teraz pasek z tłem, a nie szary tekst
+położony na kanałach.
+
+## Plik M3U i EPG z pamięci
+
+Playlistę i program TV można też wskazać plikiem z pamięci urządzenia albo
+z karty USB — w **Ustawieniach**, przyciskami **„Wybierz plik M3U”** i
+**„Wybierz plik EPG”**. Na każdej platformie robi to coś innego:
+
+| Platforma | Co się dzieje po naciśnięciu |
+|---|---|
+| przeglądarka, telefon | otwiera się systemowe okno wyboru plików |
+| Android TV / Google TV / Fire TV | wybór prowadzi plugin `OpenIptvFiles` (patrz niżej) |
+| webOS | systemowego okna nie ma, więc jest podpowiedź, czym zastąpić plik |
+
+Telewizory — typowy Fire TV — często nie mają żadnej aplikacji z systemowym oknem
+wyboru plików. Wtedy `<input type="file">` nie ma czego otworzyć i przycisk
+milczy, dlatego wybór przejmuje plugin natywny
+(`android/app/src/main/java/pl/openiptv/player/FilePlugin.java`):
+
+1. próbuje systemowego wyboru dokumentów (`ACTION_OPEN_DOCUMENT`, potem
+   `ACTION_GET_CONTENT`) — tak działa Android TV, Google TV i telefon,
+2. gdy takiego okna nie ma, pokazuje własną listę katalogów, po której chodzi się
+   pilotem: pamięć urządzenia, karta USB, dysk. Katalogi są pierwsze, `../` wraca
+   w górę, widać pierwsze 300 pozycji, pliki ukryte (z kropką) są pomijane,
+3. kopiuje wybrany plik do pamięci aplikacji i oddaje stronie jego ścieżkę, a ta
+   czyta go przez lokalny serwer Capacitora (`/_capacitor_file_/`). Dzięki temu
+   odczyt zależy tylko od własnego pliku, a nie od uprawnień do cudzych URI.
+
+Uprawnienie `READ_EXTERNAL_STORAGE` w manifeście ma `maxSdkVersion="32"`: na
+Androidzie 12 i starszym plugin prosi o nie przed pokazaniem listy, na Androidzie
+13+ nie jest potrzebne (wybór idzie przez systemowy wybór dokumentów), a po
+odmowie lista pokazuje katalogi, które i tak da się przeczytać (na Fire OS 7
+wystarcza `/sdcard`).
+
+Plik EPG czytany jest binarnie, a GZIP rozpoznawany po nagłówku — spakowany plik
+o nazwie `.xml` też się rozpakuje.
+
 ## Pobieranie
 
 Gotowe paczki (`.apk` i `.ipk`) leżą w
@@ -58,20 +152,23 @@ sklonowaniu repozytorium — nic nie trzeba przygotowywać poza nim — i dokła
 ten plik ląduje w wydaniu na GitHubie razem z `.ipk`.
 
 Adres `.../releases/latest` zawsze prowadzi do najnowszego wydania, a numer
-wersji i pełna lista zmian są w `CHANGELOG.md`. Kolejne wydanie tworzy
-`scripts/publish.ps1` z przełącznikiem `-Release`: robi commit, buduje paczki
-(`npm run build:all`) i tworzy wydanie tylko z nimi — brak gotowej paczki
+wersji i pełna lista zmian są w `CHANGELOG.md`. Opis wydania (to, co widać na
+GitHubie jako „co nowego”) wycina z `CHANGELOG.md` generator
+`scripts/release-notes.js` (`npm run notes`) — tylko sekcję wydawanej wersji,
+bez zmian z poprzednich wydań. Kolejne wydanie tworzy `scripts/publish.ps1`
+z przełącznikiem `-Release`: robi commit, buduje paczki (`npm run build:all`),
+sam generuje opis i tworzy wydanie tylko z tymi plikami — brak gotowej paczki
 przerywa publikację:
 
 ```powershell
 npm run publish --message="wersja 1.19.0" -Tag v1.19.0 -Release
-# własny opis wydania: dodatkowo -Notes C:\sciezka\opis.md
+# własny opis wydania zamiast z CHANGELOG.md: dodatkowo -Notes C:\sciezka\opis.md
 ```
 
-Ręcznie to samo robi `gh release create`, z jawnie wskazanymi paczkami:
+Ręcznie to samo robi `gh release create`, z jawnie wskazanymi paczkami i opisem:
 
 ```powershell
-gh release create vX.Y.Z dist\android\OpenIPTV-X.Y.Z.apk dist\ipk\OpenIPTV-X.Y.Z.ipk --title "OpenIPTV X.Y.Z" --notes "co nowego"
+gh release create vX.Y.Z dist\android\OpenIPTV-X.Y.Z.apk dist\ipk\OpenIPTV-X.Y.Z.ipk --title "OpenIPTV X.Y.Z" --notes-file dist\release-notes-X.Y.Z.md
 ```
 
 ### Numeracja wersji
@@ -104,7 +201,7 @@ OpenIPTV/
 │  └─ lib/                  hls.min.js, mpegts.min.js, pako.min.js (ładowane leniwie)
 ├─ webos-service/           natywny serwis webOS (pobieranie bez CORS)
 ├─ android/                 projekt Android wygenerowany przez Capacitor
-│  └─ app/                  MainActivity, UpdatePlugin, AndroidManifest, ikony, splash
+│  └─ app/                  MainActivity, UpdatePlugin, FilePlugin, AndroidManifest, ikony, splash
 ├─ scripts/
 │  ├─ build-webos.ps1       www/ + webos-service/ → .ipk
 │  ├─ build-android.ps1     www/ → .apk (Capacitor + Gradle)
@@ -180,16 +277,24 @@ Oba skrypty mają parametr `-OutDir`, którym można wskazać inny folder docelo
   — ekran startowy to tło `#0a0c11` z logo OpenIPTV na środku; obrazki
   w `res\drawable*\splash.png` generuje `scripts/make-icons.ps1`, żeby start
   pokazywał ten sam znak co ikona aplikacji (`npm run test:splash` tego pilnuje)
+- plugin `FilePlugin` (`OpenIptvFiles`) — wybór plików M3U/EPG dla telewizorów bez
+  systemowego okna wyboru plików; rejestrowany w `MainActivity` obok
+  `UpdatePlugin` (`registerPlugin`), a uprawnienie `READ_EXTERNAL_STORAGE` ma
+  `maxSdkVersion="32"` (na Androidzie 13+ zbędne — patrz
+  [Plik M3U i EPG z pamięci](#plik-m3u-i-epg-z-pamięci))
 
 ## Testy
 
-Bez telewizora i bez emulatora — `npm test` uruchamia wszystkie cztery:
+Bez telewizora i bez emulatora — `npm test` uruchamia wszystkie siedem:
 
 ```powershell
-npm run test:seek     # decyzje przewijania archiwum (www/app.js)
+npm run test:seek     # przewijanie archiwum, pauza/wznowienie, 🔇 i ▲▼ kanał (www/app.js)
 npm run test:update   # porównanie wersji i wybór paczki .apk / .ipk
 npm run test:ui       # skalowanie interfejsu (www/ui-scale.js)
+npm run test:pick     # wybór pliku M3U/EPG: przyciski, plugin natywny, błędy odczytu
+npm run test:nav      # menu główne: grupy, szukanie, ikony SVG, pasek podpowiedzi pilota
 npm run test:splash   # ekran startowy Androida: tło, znak, wymiary, środek
+npm run test:notes    # opis wydania: tylko wydawana wersja, bez ogona z poprzednich
 ```
 
 Testy czytają prawdziwe pliki z repozytorium (wyciągają funkcje z `www/app.js`,

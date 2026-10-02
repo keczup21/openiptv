@@ -56,4 +56,12 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!-- Wybor pliku M3U / EPG z pamieci urzadzenia lub karty USB. Dotyczy tylko
+         telewizorow bez systemowego okna wyboru plikow (typowy Fire TV); od
+         Androida 13 wybor plikow idzie przez systemowy wybor dokumentow i ta
+         zgoda nie jest juz potrzebna. -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
 </manifest>

@@ -9,6 +9,151 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/), wersje wg [Sem
 `www/appinfo.json`, `package.json`, `android/app/build.gradle`) podbija jedna
 komenda: `npm run bump -- X.Y.Z`.
 
+**Jak piszemy wpisy:** wpis opisuje wyłącznie to, co zmieniło się w swoim
+wydaniu — bez powtarzania zmian z wcześniejszych wersji i bez odnotowywania
+samego podbicia numeru (miejsca z numerem opisuje akapit wyżej). Opis wydania na
+GitHubie powstaje z tego wpisu: `npm run notes` (`scripts/release-notes.js`)
+bierze z changeloga tylko sekcję wydawanej wersji.
+
+## [1.21.0] — 2026-10-03
+
+### Dodano
+- **Pilot w odtwarzaczu działa jak w telewizorze.** `▲` `▼` (CH+ / CH−) na obrazie
+  wybierają następny i poprzedni kanał z listy, którą widać (kategoria, wyniki
+  wyszukiwania), z zawijaniem na końcach; kanał oglądany z programu TV z innej
+  kategorii szukany jest w całej playliście. Trzymana strzałka nie przełącza
+  kanałów seriami — jedno naciśnięcie to jedna zmiana
+  (`zapChannel()`, `listIndex()` w `www/app.js`).
+- **Pauza i wznowienie na kanale na żywo.** `⏸` / `⏹` zatrzymuje obraz i zapamiętuje
+  chwilę zatrzymania, a `⏵` po dłuższej pauzie (ponad 1,5 s) wraca przez okno
+  catch-up dokładnie do tego miejsca, jeśli kanał ma archiwum. Bez archiwum (albo
+  przy krótkiej pauzie) obraz leci dalej tym samym strumieniem, bez przeładowania
+  (`pausePlayback()`, `resumePlayback()`).
+- **`🔇` na pilocie** (449 webOS / Tizen, 173 klawiatura) wycisza i włącza dźwięk
+  strumienia, a przycisk na pasku pokazuje stan: „🔇 Wycisz” albo „🔊 Dźwięk”.
+- **Dwa przyciski więcej na pasku odtwarzacza**: `📅 Program TV` — siatka otwiera się
+  na oglądanym kanale i `Wstecz` wraca do obrazu, nie do listy — oraz `🔇 Wycisz`.
+- **Pytanie „Wyjdź z aplikacji?”.** `Wstecz` na liście kanałów nie zamyka już
+  aplikacji od razu, tylko pokazuje potwierdzenie (Zostaję / Wyjdź). Na Android TV
+  i Fire TV okno zamyka most `OpenIptvNative.quit()` dodany w `MainActivity`
+  (samo `window.close()` w WebView jest ignorowane), na webOS i Tizenie kończy
+  aplikację platforma, a w przeglądarce zostaje podpowiedź, że okno zamyka
+  użytkownik. W `Wstecz` zamyka też to okno.
+- **`npm run test:seek` sprawdza sterowanie obrazem.** Nowe scenariusze bez
+  telewizora: pauza i wznowienie na żywo (z oknem catch-up, po krótkiej pauzie,
+  bez archiwum), `⏵‖`, wyciszenie i `▲▼` z zawijaniem oraz kanałem spoza widocznej
+  kategorii. Test nadal wyciąga funkcje z `www/app.js`, więc nie trzyma kopii logiki.
+- **Instrukcja pilota w ustawieniach.** Nowa sekcja **„PILOT W ODTWARZACZU”**
+  (`www/index.html`) z tabelą klawiszy — krótkie i przytrzymane `OK`, `MENU`,
+  `▲ ▼`, `◀ ▶`, `⏪ ⏩`, `⏵‖`, `⏹`, `🔇` i `Wstecz` — oraz zdaniem, co robi każdy
+  z nich na kanale na żywo i w archiwum. Opisy są w obu językach (`I18N_PL` /
+  `I18N_EN` w `www/app.js`), tabela ma własny styl w `www/styles.css`
+  (`.keys-table`, z wariantami dla trybu TV i dotykowego), a pilnuje jej
+  `npm run test:ui`: komplet klawiszy, opis w każdym wierszu i to, że **każdy**
+  napis z `index.html` ma wersję polską i angielską (102 klucze).
+
+### Zmieniono
+- **Strzałki na obrazie sterują transmisją, nie paskiem.** `◀` `▶` przewijają
+  (o krok z ustawień, `⏪` `⏩` pilota zawsze), a `▲` `▼` przełączają kanał. Po
+  przyciskach paska chodzą tylko wtedy, gdy fokus jest już na pasku (mysz, dotyk),
+  dzięki czemu pilot nie „gubi się” między paskiem a kanałami.
+- **Krótkie `OK` pokazuje i schowuje pasek**, a `MENU` albo trzymane `OK` otwiera
+  menu opcji kanału — teraz z akcjami odtwarzacza także na kanale na żywo: od
+  początku (catch-up), poprzedni/następny program, na żywo, cisza, EPG, ulubione.
+- **Program TV podświetla oglądany kanał** (wiersz z akcentem), więc po powrocie
+  z obrazu od razu widać, gdzie się jest.
+- **Ustawienia wychodzą bez zapisu.** „Zapisz i pobierz” i nowy przycisk „Wstecz”
+  stoją obok siebie; porzucone zmiany w formularzu nie trafiają do pliku ustawień.
+- **Teksty interfejsu** (polskie i angielskie) opisują nowe klawisze: podpowiedź
+  trybu TV, etykiety przycisków paska i pytanie o wyjście.
+- **README opisuje pilota.** Nowa sekcja **Pilot w odtwarzaczu** — tabela klawiszy
+  (kanał, przewijanie, pasek, menu, pauza, cisza, `Wstecz`), opis potwierdzenia
+  wyjścia z aplikacji i wskazanie, gdzie w aplikacji leży ta sama instrukcja
+  (Ustawienia → „Pilot w odtwarzaczu”).
+
+### Naprawiono
+- **Sterowanie w menu głównym (lista kanałów) działa jak pilot.** Cztery rzeczy
+  zachowywały się źle, a wszystkie brały się z tego, że ekran nie był pisany pod
+  fokus pilota:
+  - **Grupa przełączała się sama.** Przycisk grupy wybierał kategorię już na
+    `focus`, więc pilot schodząc z listy kanałów na boki (albo dojeżdżając do jej
+    końca) przerzucał na inną kategorię w trakcie przewijania. Teraz grupę
+    wybiera tylko `OK` (klik), a po wybraniu fokus od razu wchodzi w jej kanały.
+  - **Z pola „Szukaj” nie dało się wyjść.** Pole tekstowe zjadało wszystkie
+    strzałki (przesuwało kursor), a pilot nie ma `Tab`, więc z szukania nie
+    było drogi ani do grup, ani do kanałów. Teraz `▼` przechodzi do listy
+    kanałów, `▶` przy końcu tekstu do następnego pola paska, a `◀` — gdy kursor
+    stoi na początku zapytania — do listy grup. W środku tekstu `◀` `▶` nadal
+    przesuwają kursor, więc zapytanie można poprawiać.
+  - **Po zapisaniu ustawień samo włączało się szukanie kanałów.** `showScreen()`
+    stawiał fokus na pierwszym elemencie ekranu, a tym elementem jest pole
+    szukania — na telewizorze wyskakiwała z niego klawiatura ekranowa. Wejście
+    na ekran pomija teraz pola tekstowe, a lista kanałów zaczyna na wybranej
+    grupie (`entryFocusTarget()`); po wczytaniu playlisty fokus wchodzi od razu
+    w kanały (`focusChannelEntry()`), chyba że użytkownik właśnie pisze zapytanie.
+  - **„Kropka” zamiast ikon.** Na telewizorze przyciski bez napisu (zębatka
+    ustawień, odświeżanie) dostawały `padding` z reguły `body.uimode-tv button`
+    — razem z szerokością 58 px zostawało 6 px na treść i ikona była ściśnięta
+    do kreski. Poprawka: `body.uimode-tv .icon-button { padding: 0 }` i
+    `flex: none` na SVG. Dodatkowo ikony przycisków są teraz **rysowane jako
+    SVG, a nie znakami emoji** (`setIconLabel()` w `www/app.js`, ikony
+    w `ICON_PATHS`): na dekoderach telewizyjnych czcionka emoji bywa okrojona
+    i z „📅 Program TV” zostawała kropka. Przycisk `EPG` ma ikonę kalendarza,
+    ustawienia — zębatkę razem z napisem „Ustawienia”, a gwiazdki ulubionych,
+    archiwum, pasek odtwarzacza, menu opcji kanału i pytanie o wyjście mają
+    własne ikony SVG.
+- **Podpowiedź pilota pod listą kanałów jest widoczna.** `.tv-keys-hint` był
+  szarym (`--faint`) tekstem 17 px położonym `position: absolute` na wierzchu
+  listy. Teraz to pasek w układzie ekranu: tło `--surface`, ramka, tekst
+  `--text` i 20 px, więc instrukcja czytelnie odcina się od kanałów.
+- **`npm run test:nav` pilnuje menu głównego.** Test bez telewizora sprawdza na
+  prawdziwych funkcjach z `www/app.js` (w `vm`): brak wyboru grupy na `focus`,
+  strzałki w polu szukania, wejście fokusem w kanały po wybraniu grupy, pomijanie
+  pól tekstowych przez `entryFocusTarget()`, a także to, że każdy napis
+  z przycisku (pasek odtwarzacza, menu opcji, pytanie o wyjście, narzędzia grup)
+  ma przypisaną ikonę SVG i że `index.html` oraz `styles.css` nie wróciły do
+  emoji ani do ściskanego przycisku. Sterowanie opisuje też nowa sekcja README
+  **Pilot na liście kanałów (menu główne)**.
+- **„Wybierz plik M3U” i „Wybierz plik EPG” znów coś robią na telewizorach.**
+  Przyciski były opakowaniem na `<input type="file">`, a Fire TV (i część
+  Android TV) nie ma żadnej aplikacji z systemowym oknem wyboru plików — kliknięcie
+  nie miało czego otworzyć, więc nic się nie działo i nie było nawet błędu. Wybór
+  przejmuje teraz plugin natywny `OpenIptvFiles`
+  (`android/app/src/main/java/pl/openiptv/player/FilePlugin.java`, rejestrowany
+  w `MainActivity` obok `UpdatePlugin`): próbuje systemowego wyboru dokumentów
+  (`ACTION_OPEN_DOCUMENT`, potem `ACTION_GET_CONTENT`), a gdy takiego okna nie ma,
+  pokazuje własną listę katalogów do chodzenia pilotem — pamięć urządzenia, karta
+  USB, dysk; katalogi pierwsze, `../` w górę, pierwsze 300 pozycji, pliki ukryte
+  pomijane. Wybrany plik kopiuje do pamięci aplikacji i oddaje `www` jego ścieżkę,
+  a strona czyta go przez lokalny serwer Capacitora (`/_capacitor_file_/`) — bez
+  zależności od uprawnień do cudzego URI. `READ_EXTERNAL_STORAGE` w manifeście ma
+  `maxSdkVersion="32"`, więc na Androidzie 12 i starszym plugin poprosi
+  o uprawnienie, a na Androidzie 13+ pójdzie przez systemowy wybór dokumentów.
+  Plik EPG czytany jest binarnie, a GZIP rozpoznawany po nagłówku, więc spakowany
+  plik o nazwie `.xml` też się rozpakuje. Przyciski wyboru to teraz prawdziwe
+  `<button>` z fokusem pilota (podświetlenie w trybie TV), a ukryte pola pliku
+  zostały jako ścieżka zapasowa dla przeglądarki i telefonu.
+- **webOS mówi, co zrobić zamiast martwego przycisku.** Systemowego wyboru pliku
+  tam nie ma i nie będzie, więc wybór M3U/EPG pokazuje podpowiedź: wpisz adres
+  playlisty (Typ źródła: Link do M3U) albo dane Xtream.
+- **`npm run test:pick` pilnuje wyboru pliku.** Test bez telewizora sprawdza
+  przyciski, napisy (polskie i angielskie) i styl pola pliku w `www/`, plugin
+  `FilePlugin.java` wraz z jego rejestracją i uprawnieniem w paczce Android, a na
+  prawdziwych funkcjach wyciągniętych z `www/app.js` (uruchomionych w `vm`) same
+  decyzje: udany wybór playlisty i EPG, anulowanie, brak czym wybrać, odrzucone
+  wywołanie pluginu, nieczytelny plik i błędny GZIP.
+- **README opisuje wybór pliku.** Nowa sekcja **Plik M3U i EPG z pamięci** —
+  tabela zachowania na trzech platformach, kolejność prób w pluginie, kopia pliku
+  do pamięci aplikacji i uprawnienie ograniczone do Androida 12.
+- **Opis wydania na GitHubie opisuje tylko wydawaną wersję.** Pliki z „co nowego”
+  (`dist/release-notes-<wersja>.md`) powstawały ręcznie i miały ogon z poprzednich
+  wydań — wydanie 1.20.0 opisywało też 1.19.4 i 1.19.3, a 1.20.1 jeszcze 1.20.0.
+  Teraz opis wycina z `CHANGELOG.md` generator `scripts/release-notes.js`
+  (`npm run notes`) i kończy go na nagłówku następnej wersji,
+  `npm run publish -Release` tworzy opis sam (własny nadal przyjmuje `-Notes`)
+  i przerywa publikację, gdy w opisie jest więcej niż jedna wersja. Pilnuje tego
+  nowy `npm run test:notes`.
+
 ## [1.20.1] — 2026-10-02
 
 ### Naprawiono
@@ -25,7 +170,6 @@ komenda: `npm run bump -- X.Y.Z`.
 - **`npm run test:splash`** — test bez telewizora i bez emulatora: czyta pliki PNG
   własnym kodem i sprawdza w każdym wariancie wymiary, tło, rozmiar znaku i jego
   wyśrodkowanie, a także to, że `make-icons.ps1` opisuje te same pliki.
-  `npm test` uruchamia wszystkie testy projektu (seek, update, ui, splash).
 
 ## [1.20.0] — 2026-10-02
 
@@ -48,9 +192,6 @@ komenda: `npm run bump -- X.Y.Z`.
 - **Nagłówek przy wąskim układzie.** Przy skali 150% (układ 1280 px) przyciski
   w nagłówku nie są już ucinane — ekran telewizora układa się kolumną, a lista
   kanałów zabiera resztę wysokości.
-- **Wersje podbite w czterech miejscach**: `www/app.js` (`APP_VERSION`),
-  `www/appinfo.json`, `package.json` i `android/app/build.gradle`
-  (`versionName` + `versionCode 25`).
 
 ## [1.19.4] — 2026-10-02
 
@@ -96,9 +237,6 @@ komenda: `npm run bump -- X.Y.Z`.
   wydanie i pokazuje numer nowszej wersji oraz krótko, co się zmieniło (pierwsze
   punkty opisu wydania, bez markdownu). Pobranie i instalację uruchamia dopiero
   przycisk `Pobierz i zainstaluj` — nic nie dzieje się w tle.
-- **Wersje podbite w czterech miejscach**: `www/app.js` (`APP_VERSION`),
-  `www/appinfo.json`, `package.json` i `android/app/build.gradle`
-  (`versionName` + `versionCode 21`).
 - **Wydanie developerskie w repozytorium.** `npm run build:android` tworzy jedną
   paczkę `.apk` bez żadnej konfiguracji trzymanej poza repozytorium, a `app.js`,
   `build.gradle` opisują tylko ten build — na GitHub idzie gotowy plik z `dist`
@@ -119,9 +257,6 @@ komenda: `npm run bump -- X.Y.Z`.
   instaluje `.ipk` sam, więc przy nowszym wydaniu aplikacja pokazuje wersję,
   nazwę paczki oraz adres wydania — paczkę wgrywa się z komputera przez tryb
   deweloperski (`ares-install`).
-- **Wersje podbite w czterech miejscach**: `www/app.js` (`APP_VERSION`),
-  `www/appinfo.json`, `package.json` i `android/app/build.gradle`
-  (`versionName` + `versionCode 20`).
 
 ## [1.18.2] — 2026-10-02
 
@@ -144,10 +279,8 @@ komenda: `npm run bump -- X.Y.Z`.
 ## [1.18.1] — 2026-10-02
 
 ### Zmieniono
-- **Wersje podbite w czterech miejscach**: `www/app.js` (`APP_VERSION`),
-  `www/appinfo.json`, `package.json` i `android/app/build.gradle`
-  (`versionName` + `versionCode 18`), dzięki czemu webOS i Android widzą nowszą
-  paczkę niż wydanie 1.18.0.
+- **Wydanie z nowszym numerem** (`versionCode 18`) — sama zmiana numeru wersji,
+  żeby webOS i Android przyjęły paczkę jako aktualizację; bez zmian w działaniu.
 
 ## [1.18.0] — 2026-10-01
 
@@ -191,8 +324,6 @@ komenda: `npm run bump -- X.Y.Z`.
 - **Nazwy bez „firetv”**: `scripts/build-firetv.ps1` → `scripts/build-android.ps1`,
   a skrypt npm `build:firetv` → `build:android`. Fire TV to tylko jedno z
   urządzeń, na których działa ta sama paczka Android.
-- **Wersje ujednolicone na 1.18.0**: `www/app.js`, `www/appinfo.json`,
-  `package.json` i `android/app/build.gradle` (versionCode 17).
 - **Nowa tożsamość aplikacji**: `appId`/`applicationId` oraz usługa Luna to
   teraz `pl.openiptv.player` (paczka webOS: `pl.openiptv.player_1.18.0_all.ipk`).
   Instaluje się obok poprzedniej wersji, więc ustawienia się nie przenoszą.
@@ -239,9 +370,6 @@ komenda: `npm run bump -- X.Y.Z`.
   `.ts` są dodatkowo ponawiane raz jako HLS (`.m3u8`).
 
 ### Zmieniono
-- Podniesiona wersja we wszystkich miejscach: `APP_VERSION`, `appinfo.json`,
-  `package.json`, `versionName` + `versionCode 15` — dzięki temu webOS instaluje
-  aktualizację, a Android widzi nowy build.
 - Android czyści pamięć podręczną WebView raz na nową wersję (`MainActivity`), żeby
   nigdy nie powstała mieszanka starych i nowych plików (`index.html` + `app.js`).
 

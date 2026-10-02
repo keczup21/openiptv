@@ -123,9 +123,24 @@ try {
             throw "Brak gh w PATH - zainstaluj GitHub CLI, zeby tworzyc wydania."
         }
 
+        # Opis wydania bierze sie z CHANGELOG.md i obejmuje TYLKO wydawana
+        # wersje. Wczesniej plik z opisem wskazywano recznie (-Notes) i do
+        # wydania trafial ogon z poprzednich wersji (np. wydanie 1.20.0
+        # opisywalo tez 1.19.4 i 1.19.3) - teraz pilnuje tego generator.
+        if (-not $Notes) {
+            $Notes = Join-Path $root "dist\release-notes-$ver.md"
+            Invoke-Exe node (Join-Path $root "scripts\release-notes.js") $ver
+            Write-Host "Opis wydania z CHANGELOG.md: $Notes"
+        }
+        $versionsInNotes = @(Select-String -Path $Notes -Pattern '^## \[').Count
+        if ($versionsInNotes -ne 1) {
+            throw ("Opis wydania ($Notes) opisuje " + $versionsInNotes +
+                   " wersje - ma byc tylko $ver. Uzyj npm run notes.")
+        }
+
         Write-Host "Tworze wydanie $Tag ..."
-        $ghArgs = @("release", "create", $Tag, $apk, $ipk, "--title", "OpenIPTV $ver")
-        if ($Notes) { $ghArgs += @("--notes-file", $Notes) } else { $ghArgs += "--generate-notes" }
+        $ghArgs = @("release", "create", $Tag, $apk, $ipk, "--title", "OpenIPTV $ver",
+                    "--notes-file", $Notes)
         Invoke-Exe gh @ghArgs
         Write-Host "Wydanie gotowe: $Tag ($(Invoke-Git remote get-url origin))"
     }

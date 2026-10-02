@@ -4,6 +4,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.os.Build;
 import android.os.Bundle;
+import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -18,12 +19,15 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        /* Lokalny plugin aktualizacji (pobranie APK z GitHuba + systemowy
-           instalator) musi byc zarejestrowany przed super.onCreate. */
+        /* Lokalne pluginy (aktualizacja APK z GitHuba, wybor pliku M3U / EPG bez
+           systemowego okna wyboru na Fire TV) musza byc zarejestrowane przed
+           super.onCreate. */
         registerPlugin(UpdatePlugin.class);
+        registerPlugin(FilePlugin.class);
         clearWebViewCacheOnUpdate();
         super.onCreate(savedInstanceState);
         applyTvViewport();
+        bindExitBridge();
     }
 
     /* Fire TV i Android TV zgłaszają ekran o gęstości 2.0, czyli okno 960x540 px
@@ -47,6 +51,32 @@ public class MainActivity extends BridgeActivity {
             webView.requestLayout();
         } catch (Exception ignored) {
             /* brak możliwości zmiany ustawień nie może blokować startu aplikacji */
+        }
+    }
+
+    /* Most dla przycisku „Wyjdź z aplikacji” z interfejsu. W WebView samo
+       window.close() jest ignorowane, więc „Wstecz” na liście kanałów pokazuje
+       pytanie o wyjście (app.js -> showExitConfirm), a potwierdzenie woła
+       OpenIptvNative.quit(), które dopiero kończy aktywność. */
+    private void bindExitBridge() {
+        try {
+            Bridge bridge = getBridge();
+            WebView webView = bridge != null ? bridge.getWebView() : null;
+            if (webView == null) return;
+
+            webView.addJavascriptInterface(new Object() {
+                @JavascriptInterface
+                public void quit() {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            finish();
+                        }
+                    });
+                }
+            }, "OpenIptvNative");
+        } catch (Exception ignored) {
+            /* bez mostu wyjście zostaje przy systemowym przycisku Wstecz */
         }
     }
 

@@ -137,7 +137,7 @@ header nav select { padding: 12px 16px; border-radius: 999px; border: 2px solid 
   color: var(--muted);
   background: var(--surface);
 }
-.icon-button svg { width: 24px; height: 24px; }
+.icon-button svg { width: 24px; height: 24px; flex: none; }
 .icon-button:hover { color: var(--accent); }
 
 /* ---------- przeglądarka kanałów ---------- */
@@ -430,12 +430,16 @@ aside {
 .file-picker {
   display: inline-block;
   padding: 12px 18px;
+  color: var(--muted);
+  font-size: 18px;
   background: var(--surface-2);
   border: 2px dashed var(--border);
   border-radius: var(--radius-sm);
   cursor: pointer;
 }
-.file-picker input { display: none; }
+/* pole pliku jest tylko dla przeglądarki — na telewizorze wybór prowadzi
+   natywny plugin (patrz app.js -> startFilePick) */
+.file-input { display: none; }
 #saveSettings {
   width: 100%;
   margin-top: 8px;
@@ -523,6 +527,10 @@ body.uimode-tv header span { font-size: 18px; }
 body.uimode-tv header nav input { width: 340px; font-size: 21px; }
 body.uimode-tv .icon-button { width: 58px; height: 58px; }
 body.uimode-tv .icon-button svg { width: 28px; height: 28px; }
+/* przycisk bez napisu nie może dostać paddingu reguły „body.uimode-tv button”:
+   razem z szerokością 58 px zostawało 6 px na treść i ikona była ściśnięta
+   do kreski (zębatka i odświeżanie wyglądały jak kropka) */
+body.uimode-tv .icon-button { padding: 0; }
 
 /* bezpieczny obszar pod overscan telewizorów (ok. 4% z każdej strony) */
 body.uimode-tv aside { width: 400px; padding: 3vh 2vw; }
@@ -563,18 +571,25 @@ body.uimode-tv .channel:focus-within {
 /* pasek przewijania na TV jest bezużyteczny, a kosztuje przemalowanie ekranu */
 body.uimode-tv ::-webkit-scrollbar { width: 0 !important; height: 0 !important; }
 
-/* pasek podpowiedzi pilota (tylko TV) */
+/* pasek podpowiedzi pilota (tylko TV) — czytelny pas pod listą kanałów;
+   wcześniej był szarym, małym tekstem położonym na wierzchu listy */
 .tv-keys-hint {
   display: none;
-  position: absolute;
-  left: 4vw;
-  bottom: 1.2vh;
   margin: 0;
-  color: var(--faint);
-  font-size: 15px;
-  pointer-events: none;
+  padding: 10px 4vw;
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1.4;
 }
-body.uimode-tv .tv-keys-hint { display: block; font-size: 17px; }
+body.uimode-tv .tv-keys-hint {
+  display: block;
+  flex: none;
+  padding: 14px 4vw 20px;
+  color: var(--text);
+  font-size: 20px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
 
 /* ekran telewizora układa się jak kolumna: nagłówek może się zawinąć przy
    wąskim układzie (np. skala 150%), a lista kanałów zabiera resztę wysokości */
@@ -684,10 +699,107 @@ body.uimode-tv #status { font-variant-numeric: tabular-nums; }
    na komputerze), więc tutaj zostaje sama informacja o wykrytym ekranie.
    ========================================================================== */
 
-#screenInfo {
-  margin: -8px 0 18px;
-  font-variant-numeric: tabular-nums;
+/* ==========================================================================
+   1.21.0 — pilot w odtwarzaczu: ▲ ▼ przełącza kanał, ◀ ▶ przewija, OK otwiera
+   panel, 🔇 wycisza, Wstecz pyta o wyjście, ustawienia wychodzą bez zapisu
+   ========================================================================== */
+
+/* oglądany kanał w programie TV — wiersz, na którym stoi siatka */
+.guide-row.watching { box-shadow: inset 4px 0 0 var(--accent); }
+.guide-row.watching .guide-channel { background: var(--surface-2); }
+.guide-row.watching .guide-channel span { color: var(--accent); }
+
+/* przyciski na dole ustawień: zapis obok wyjścia bez zapisu */
+.settings-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; }
+.settings-actions button { flex: 1 1 240px; }
+.settings-actions #saveSettings { width: auto; margin-top: 0; }
+#settingsBack { background: var(--surface-2); font-weight: 600; border-radius: 12px; }
+body.uimode-tv .settings-actions button { font-size: 21px; padding: 18px; }
+body.uimode-tv .settings-actions button:focus {
+  border-color: #fff;
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: none;
 }
-body.uimode-tv #screenInfo { font-size: 17px; }
+
+/* pytanie „wyjść z aplikacji?” korzysta z okna menu kontekstowego — tutaj
+   tylko czytelniejsza podpowiedź i wyśrodkowane odpowiedzi */
+#exitDialog .ctx-sub { line-height: 1.5; }
+#exitDialog .ctx-actions button { text-align: center; font-weight: 600; }
+
+/* tabela klawiszy pilota w ustawieniach (sekcja „PILOT W ODTWARZACZU”) —
+   dwie kolumny: klawisz i co robi, wiersze rozdzielone cienką linią, żeby
+   instrukcja czytała się jak lista, a nie jak siatka tabeli */
+.keys-table { width: 100%; margin: 0 0 22px; border-collapse: collapse; }
+.keys-table tr + tr { border-top: 1px solid var(--border-soft); }
+.keys-table th {
+  width: 210px;
+  padding: 13px 18px 13px 0;
+  font-weight: 400;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.keys-table td { padding: 13px 0; color: var(--muted); font-size: 17px; line-height: 1.45; }
+.keys-table kbd {
+  display: inline-block;
+  min-width: 38px;
+  padding: 6px 12px;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-bottom-width: 3px;
+  border-radius: 9px;
+}
+body.uimode-tv .keys-table th { width: 250px; }
+body.uimode-tv .keys-table td { font-size: 20px; }
+body.uimode-tv .keys-table kbd { font-size: 19px; }
+body.uimode-touch .keys-table th { width: 124px; }
+body.uimode-touch .keys-table kbd { font-size: 15px; }
+
+/* ==========================================================================
+   1.21.0 — menu główne (lista kanałów): ikony przycisków i sterowanie pilotem
+
+   • ikony rysujemy jako SVG (app.js → setIconLabel), a nie znakami emoji —
+     na dekoderach telewizyjnych czcionka emoji bywa okrojona i z „📅 Program
+     TV” zostawała kropka; te same znaki w słownikach nadal opisują przyciski,
+   • przycisk z ikoną to inline-flex, żeby ikona i napis stały w jednej linii
+     (zwykłe „display: block” zrzucało ikonę nad napis).
+   ========================================================================== */
+
+button.has-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+button.has-icon .icon-label { min-width: 0; }
+button .icon { width: 22px; height: 22px; flex: none; }
+body.uimode-tv button .icon { width: 26px; height: 26px; }
+
+/* przyciski nagłówka: „EPG” i „Ustawienia” mają ikonę i napis (na telewizorze
+   sam obrazek bywa nieczytelny z kanapy), a odświeżanie zostaje samą ikoną */
+.labeled-button { padding: 13px 20px; }
+body.uimode-tv .labeled-button { padding: 15px 24px; font-size: 21px; }
+
+/* ulubione i archiwum na kafelku kanału — sama ikona, wyśrodkowana */
+.favorite-button.has-icon,
+.archive-button.has-icon {
+  justify-content: center;
+  gap: 0;
+}
+.favorite-button .icon { width: 30px; height: 30px; }
+body.uimode-tv .favorite-button .icon { width: 36px; height: 36px; }
+.archive-button .icon { width: 22px; height: 22px; }
+body.uimode-tv .archive-button .icon { width: 26px; height: 26px; }
+
+/* menu opcji kanału i pytanie o wyjście: ikona przed napisem */
+.ctx-actions button.has-icon .icon { width: 24px; height: 24px; }
+body.uimode-tv .ctx-actions button.has-icon .icon { width: 28px; height: 28px; }
+
+
 
 

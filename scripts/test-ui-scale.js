@@ -2,7 +2,9 @@
    Sprawdza to samo, co robi aplikacja na telewizorze: wykryta rozdzielczosc
    ekranu (piksele fizyczne = px CSS ekranu x gestosc) -> skala -> szerokosc
    ukladu wpisana do "meta viewport". Dodatkowo pilnuje, ze index.html i app.js
-   sa z modulem zgodne (id="uiScale", id="screenInfo", klucze tlumaczen).
+   sa z modulem zgodne (id="uiScale", id="screenInfo", klucze tlumaczen) oraz ze
+   instrukcja pilota w ustawieniach (tabela .keys-table) ma komplet klawiszy,
+   opis kazdego z nich i tlumaczenia w obu jezykach.
 
    Uruchomienie: npm run test:ui */
 const fs = require("fs");
@@ -13,9 +15,11 @@ const ROOT = path.join(__dirname, "..");
 const MODULE = path.join(ROOT, "www", "ui-scale.js");
 const HTML = path.join(ROOT, "www", "index.html");
 const APP = path.join(ROOT, "www", "app.js");
+const CSS = path.join(ROOT, "www", "styles.css");
 const src = fs.readFileSync(MODULE, "utf8").replace(/\r\n/g, "\n");
 const html = fs.readFileSync(HTML, "utf8").replace(/\r\n/g, "\n");
 const app = fs.readFileSync(APP, "utf8").replace(/\r\n/g, "\n");
+const css = fs.readFileSync(CSS, "utf8").replace(/\r\n/g, "\n");
 
 let fails = 0;
 function check(name, cond, extra) {
@@ -196,9 +200,16 @@ check("lista ustawien ma automat i cztery skale",
 
 const plPart = app.slice(app.indexOf("var I18N_PL"), app.indexOf("var I18N_EN"));
 const enPart = app.slice(app.indexOf("var I18N_EN"), app.indexOf("var I18N = {"));
-const usedKeys = (scaleSelect.match(/data-i18n="[a-z_0-9]+"/g) || []).map(function (s) {
-  return s.replace('data-i18n="', "").replace('"', "");
-}).concat(["ui_scale", "screen_info", "scale_source_auto", "scale_source_manual"]);
+
+/* klucze tlumaczen uzyte w danym kawalku HTML: data-i18n="klucz"
+   (tak samo placeholder i title, bo applyTranslations() obsluguje wszystkie trzy) */
+function keysUsedIn(markup) {
+  const found = markup.match(/data-i18n(?:-placeholder|-title)?="[a-z_0-9]+"/g) || [];
+  return found.map(function (s) { return s.replace(/.*="/, "").replace(/"$/, ""); })
+    .filter(function (k, i, all) { return all.indexOf(k) === i; });
+}
+
+const usedKeys = keysUsedIn(scaleSelect).concat(["ui_scale", "screen_info", "scale_source_auto", "scale_source_manual"]);
 const missing = [];
 usedKeys.forEach(function (k) {
   if (plPart.indexOf(k + ":") < 0) missing.push(k + " (PL)");
@@ -214,6 +225,42 @@ check("skalowanie na komputerze zostaje w ui-scale.js (app.js go nie dubluje)",
   app.indexOf("document.documentElement.style.zoom") < 0);
 check("stary skrypt viewportu z index.html zniknal (nie ma dwoch meta viewport)",
   html.indexOf("applyTvViewport") > 0 && html.indexOf("createElement(\"meta\")") < 0);
+
+/* --- 11. instrukcja pilota w ustawieniach ------------------------------- */
+/* Kazdy napis z index.html (nie tylko lista rozmiaru interfejsu) musi miec
+   wersje PL i EN — inaczej na telewizorze zostaje klucz albo polski tekst. */
+const allKeys = keysUsedIn(html);
+const noTranslation = [];
+allKeys.forEach(function (k) {
+  if (plPart.indexOf(k + ":") < 0) noTranslation.push(k + " (PL)");
+  if (enPart.indexOf(k + ":") < 0) noTranslation.push(k + " (EN)");
+});
+check("kazdy napis z index.html ma polska i angielska wersje (" + allKeys.length + " kluczy)",
+  noTranslation.length === 0, noTranslation.join(", "));
+
+const keyRows = ["key_ok_short", "key_ok_hold", "key_menu", "key_updown", "key_leftright",
+  "key_rewff", "key_playpause", "key_stop", "key_mute", "key_back", "key_back_desc"];
+check("ustawienia maja sekcje z tabela klawiszy pilota",
+  html.indexOf('data-i18n="player_keys"') > 0 &&
+  html.indexOf('data-i18n="player_keys_hint"') > 0 &&
+  html.indexOf('class="keys-table"') > 0);
+const missingRows = keyRows.filter(function (k) { return html.indexOf('data-i18n="' + k + '"') < 0; });
+check("tabela opisuje wszystkie klawisze odtwarzacza (" + keyRows.length + " wierszy)",
+  missingRows.length === 0, missingRows.join(", "));
+
+/* kazdy wiersz tabeli ma klawisz (<kbd>) i opis (<td> z tlumaczeniem) */
+const rows = html.slice(html.indexOf('class="keys-table"'));
+const rowsHtml = rows.slice(0, rows.indexOf("</table>"));
+const rowCount = (rowsHtml.match(/<tr>/g) || []).length;
+const kbdCount = (rowsHtml.match(/<kbd/g) || []).length;
+const descCount = (rowsHtml.match(/<td data-i18n=/g) || []).length;
+check("kazdy wiersz tabeli ma klawisz i opis",
+  rowCount > 0 && rowCount === kbdCount && rowCount === descCount,
+  rowCount + " wierszy / " + kbdCount + " klawiszy / " + descCount + " opisow");
+
+check("arkusz stylow ma tabele klawiszy (takze w trybie TV i dotykowym)",
+  css.indexOf(".keys-table kbd") > 0 && css.indexOf("body.uimode-tv .keys-table") > 0 &&
+  css.indexOf("body.uimode-touch .keys-table") > 0);
 
 console.log("");
 if (fails) { console.log("BLEDY: " + fails); process.exit(1); }

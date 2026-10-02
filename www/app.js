@@ -21,7 +21,7 @@
      był natychmiastowy i nie przepisywał za każdym razem megabajtów danych. */
   var BLOBS_KEY = "openiptvBlobs";
   var BLOB_FIELDS = ["playlistFileText", "epgFileText", "playlistFileName", "epgFileName"];
-  var APP_VERSION = "1.20.1";
+  var APP_VERSION = "1.21.0";
   var SCHEMA_VERSION = 4;
 
   /* „Ostatnio oglądane”: kanał trafia na listę po 10 s oglądania,
@@ -48,6 +48,11 @@
      zbudować całej siatki bez zamrożenia interfejsu, a i tak nikt nie
      przewija 5000 wierszy pilotem — resztę zawęża się kategorią. */
   var GUIDE_ROWS = 60;
+  /* Jak długo kanał na żywo może stać w pauzie, żeby wznowienie poszło jeszcze
+     z tego samego strumienia. Po tym czasie obraz ucieka do przodu, więc
+     wznawiamy z archiwum dokładnie od chwili zatrzymania — inaczej „wznów”
+     pokazałoby skok do bieżącej chwili (patrz resumePlayback). */
+  var RESUME_AFTER_PAUSE = 1500;
 
   var state = {
     channels: [],
@@ -58,6 +63,9 @@
     selectedGroup: "@all",
     playerReturn: "browserScreen",
     isArchive: false,
+    /* chwila, w której użytkownik zatrzymał kanał na żywo (0 = nie zatrzymał);
+       wznowienie wraca dokładnie w to miejsce — patrz resumePlayback() */
+    livePauseAt: 0,
     currentSource: "",
     altSource: "",
     retryCount: 0,
@@ -116,7 +124,11 @@
     /* wiersze również rysujemy porcjami — inaczej lista 20 000 kanałów zabija TV */
     items: [],
     rendered: 0,
-    token: 0
+    token: 0,
+    /* kanał, na którym EPG ma stanąć po otwarciu (oglądany kanał), oraz ekran,
+       do którego wracamy po zamknięciu programu TV */
+    focusKey: "",
+    returnTo: "browserScreen"
   };
 
   var DEFAULTS = {
@@ -157,6 +169,10 @@
     xtream_server: "Adres serwera Xtream", username: "Użytkownik", password: "Hasło",
     epg_url: "EPG XMLTV (opcjonalny — Xtream pobiera go sam)", pick_epg_file: "Wybierz plik EPG",
     use_link: "Użyj linku", add_local_epg: "lub dodaj lokalny plik XMLTV",
+    pick_no_files: "Ten telewizor nie ma czym wybrać pliku — wpisz adres playlisty (Typ źródła: Link do M3U) albo dane Xtream.",
+    pick_m3u_error: "Nie udało się odczytać pliku M3U.",
+    pick_epg_error: "Nie udało się odczytać pliku EPG.",
+    pick_epg_unzip: "Nie udało się rozpakować pliku EPG: {error}",
     epg_update: "EPG — AKTUALIZACJA",
     epg_refresh: "Odświeżanie EPG", on_start: "Tylko przy starcie", every_30min: "Co 30 minut",
     every_1h: "Co 1 godzinę", every_2h: "Co 2 godziny", every_6h: "Co 6 godzin",
@@ -166,7 +182,7 @@
     min1: "1 minuta", min5: "5 minut", min10: "10 minut",
     retry_attempts: "Próby ponownego uruchomienia kanału", disabled: "Wyłączone",
     attempt1: "1 próba", attempt2: "2 próby", attempt3: "3 próby", attempt5: "5 prób", attempt10: "10 prób",
-    dpad_seek: "Lewo/prawo przewija archiwum", advanced: "ZAAWANSOWANE (OPCJONALNE)",
+    dpad_seek: "Strzałki sterują transmisją: ◀ ▶ przewija, ▲ ▼ zmienia kanał", advanced: "ZAAWANSOWANE (OPCJONALNE)",
     catchup_template: "Globalny szablon catch-up", catchup_all: "Catch-up na wszystkich kanałach (HLS)", save: "Zapisz i pobierz",
     appearance: "WYGLĄD I JĘZYK", language: "Język", theme: "Motyw", theme_dark: "Ciemny", theme_light: "Jasny",
     search: "Szukaj", refresh: "Odśwież", guide_title: "Program TV", guide_prev_day: "‹ Dzień",
@@ -227,7 +243,7 @@
     platform_firetv: "Fire TV", platform_androidtv: "Android TV", platform_webos: "webOS",
     platform_android: "Android", platform_ios: "iOS", platform_browser: "komputer / przeglądarka",
     mode_tv: "telewizyjny (pilot)", mode_touch: "dotykowy",
-    tv_hint: "OK – oglądaj • MENU / długie OK – opcje • ◀ ▲ ▼ ▶ – nawigacja • EPG: ◀ ▶ – godziny",
+    tv_hint: "OK – oglądaj • MENU / długie OK – opcje • ◀ ▲ ▼ ▶ – nawigacja • EPG: ◀ ▶ – godziny • w kanale: ▲ ▼ kanał, ◀ ▶ przewijanie",
     osd_restart: "⏪ Od początku",
     osd_prev_program: "◀ Poprzedni",
     osd_next_program: "Następny ▶",
@@ -235,11 +251,15 @@
     osd_back: "✕ Wstecz",
     osd_pause: "⏸ Pauza",
     osd_play: "⏵ Wznów",
-    osd_hint_live: "OK – pasek opcji • MENU – opcje kanału • ⏪ – cofnij o krok (catch-up)",
-    osd_hint_archive: "OK – pasek opcji • ◀ ▶ – nawigacja paska • ⏪ ⏩ – przewijanie • ⏩ na końcu – na żywo",
+    osd_hint_live: "OK – pasek • ⏵‖ – pauza/wznów • ▲ ▼ – kanał • ◀ ▶ – cofnij / do przodu • MENU – opcje",
+    osd_hint_archive: "OK – pasek • ⏵‖ – pauza/wznów • ▲ ▼ – kanał • ◀ ▶ – przewijanie • ⏩ na końcu – na żywo",
     osd_now: "Teraz:",
     osd_next_label: "Następnie:",
     osd_paused: "PAUZA",
+    osd_epg: "📅 Program TV",
+    osd_mute: "🔇 Wycisz",
+    osd_unmute: "🔊 Dźwięk",
+    osd_muted: "WYCISZONE",
     ctx_menu: "Kanał",
     ctx_play: "⏵ Oglądaj",
     ctx_fav_add: "☆ Dodaj do ulubionych",
@@ -280,7 +300,29 @@
     update_err_404: "GitHub nie widzi wydań tej aplikacji (HTTP 404). Sprawdzanie aktualizacji w aplikacji działa tylko wtedy, gdy repozytorium i wydania są publiczne.",
     update_err_json: "GitHub zwrócił nieprawidłową odpowiedź (oczekiwano JSON).",
     update_notice: "Nowa wersja {latest} (masz {current}) — Ustawienia → Aktualizacje.",
-    update_err_unknown: "nieznany błąd"
+    update_err_unknown: "nieznany błąd",
+
+    /* ---------- 1.21.0 — wyjście z aplikacji pytaniem, nie od razu ---------- */
+    exit_title: "Wyjść z aplikacji?",
+    exit_hint: "Zamknij OpenIPTV albo zostań na liście kanałów.",
+    exit_confirm: "⏻ Wyjdź z aplikacji",
+    exit_cancel: "✕ Zostań",
+    exit_manual: "Ta platforma nie pozwala zamknąć okna z aplikacji — użyj przycisku zakończenia na pilocie.",
+
+    /* ---------- 1.21.0 — instrukcja pilota w ustawieniach (sekcja „PILOT W ODTWARZACZU”) ---------- */
+    player_keys: "PILOT W ODTWARZACZU",
+    player_keys_hint: "Tak działa pilot, gdy leci kanał albo archiwum. Ustawienie „◀ ▶ przewija” dotyczy tylko strzałek — ⏪ ⏩ przewijają zawsze. Na dotykowym ekranie te same akcje są na pasku u dołu obrazu.",
+    key_ok_short: "Pasek z nazwą kanału, programem i postępem: pokaż albo schowaj.",
+    key_ok_hold: "Przytrzymaj około sekundy: menu opcji kanału (ulubione, archiwum, program TV, od początku, cisza).",
+    key_menu: "To samo menu opcji kanału, bez trzymania OK.",
+    key_updown: "Następny i poprzedni kanał z widocznej listy (jak CH+ / CH−), z zawijaniem na końcach. Jedno naciśnięcie to jedna zmiana.",
+    key_leftright: "Przewijanie o krok z ustawienia „Krok przewijania archiwum”: na nagraniu skok w tył i w przód, na kanale na żywo ◀ wchodzi w catch-up, a ▶ wznawia zatrzymany obraz.",
+    key_rewff: "Przewijanie pilota działa zawsze, także przy wyłączonych strzałkach; ⏩ na końcu programu wraca na żywo.",
+    key_playpause: "Pauza i wznowienie. Po dłuższej pauzie kanał na żywo wraca do chwili zatrzymania przez catch-up, a bez archiwum obraz dogania transmisję.",
+    key_stop: "Zatrzymanie obrazu — to samo co pauza.",
+    key_mute: "Cisza w odtwarzaczu; głośność telewizora zostaje bez zmian.",
+    key_back: "Wstecz",
+    key_back_desc: "Zamyka menu albo pasek; z obrazu wraca do listy kanałów, a z listy pyta „Wyjdź z aplikacji?”."
   };
 
   /* TŁUMACZENIA — angielski */
@@ -293,6 +335,10 @@
     xtream_server: "Xtream server address", username: "Username", password: "Password",
     epg_url: "EPG XMLTV (optional — Xtream loads it automatically)", pick_epg_file: "Choose EPG file",
     use_link: "Use link", add_local_epg: "or add a local XMLTV file",
+    pick_no_files: "This TV has no way to pick a file — enter the playlist address (Source type: M3U link) or Xtream credentials.",
+    pick_m3u_error: "Could not read the M3U file.",
+    pick_epg_error: "Could not read the EPG file.",
+    pick_epg_unzip: "Could not unpack the EPG file: {error}",
     epg_update: "EPG — UPDATES",
     epg_refresh: "EPG refresh", on_start: "Only on start", every_30min: "Every 30 minutes",
     every_1h: "Every 1 hour", every_2h: "Every 2 hours", every_6h: "Every 6 hours",
@@ -302,7 +348,7 @@
     min1: "1 minute", min5: "5 minutes", min10: "10 minutes",
     retry_attempts: "Channel retry attempts", disabled: "Disabled",
     attempt1: "1 attempt", attempt2: "2 attempts", attempt3: "3 attempts", attempt5: "5 attempts", attempt10: "10 attempts",
-    dpad_seek: "Left/right seeks the archive", advanced: "ADVANCED (OPTIONAL)",
+    dpad_seek: "Arrow keys control playback: ◀ ▶ seek, ▲ ▼ change channel", advanced: "ADVANCED (OPTIONAL)",
     catchup_template: "Global catch-up template", catchup_all: "Catch-up on all channels (HLS)", save: "Save & load",
     appearance: "APPEARANCE & LANGUAGE", language: "Language", theme: "Theme", theme_dark: "Dark", theme_light: "Light",
     search: "Search", refresh: "Refresh", guide_title: "TV Guide", guide_prev_day: "‹ Day",
@@ -363,7 +409,7 @@
     platform_firetv: "Fire TV", platform_androidtv: "Android TV", platform_webos: "webOS",
     platform_android: "Android", platform_ios: "iOS", platform_browser: "desktop / browser",
     mode_tv: "TV (remote)", mode_touch: "touch",
-    tv_hint: "OK – watch • MENU / long OK – options • ◀ ▲ ▼ ▶ – navigate • Guide: ◀ ▶ – hours",
+    tv_hint: "OK – watch • MENU / long OK – options • ◀ ▲ ▼ ▶ – navigate • Guide: ◀ ▶ – hours • in a channel: ▲ ▼ channel, ◀ ▶ seek",
     osd_restart: "⏪ From start",
     osd_prev_program: "◀ Previous",
     osd_next_program: "Next ▶",
@@ -371,11 +417,15 @@
     osd_back: "✕ Back",
     osd_pause: "⏸ Pause",
     osd_play: "⏵ Resume",
-    osd_hint_live: "OK – action bar • MENU – channel options • ⏪ – step back (catch-up)",
-    osd_hint_archive: "OK – action bar • ◀ ▶ – bar navigation • ⏪ ⏩ – seek • ⏩ at the end – live",
+    osd_hint_live: "OK – info bar • ⏵‖ – pause/resume • ▲ ▼ – channel • ◀ ▶ – back / forward • MENU – options",
+    osd_hint_archive: "OK – info bar • ⏵‖ – pause/resume • ▲ ▼ – channel • ◀ ▶ – seek • ⏩ at the end – live",
     osd_now: "Now:",
     osd_next_label: "Next:",
     osd_paused: "PAUSED",
+    osd_epg: "📅 TV guide",
+    osd_mute: "🔇 Mute",
+    osd_unmute: "🔊 Sound",
+    osd_muted: "MUTED",
     ctx_menu: "Channel",
     ctx_play: "⏵ Watch",
     ctx_fav_add: "☆ Add to favourites",
@@ -416,7 +466,29 @@
     update_err_404: "GitHub cannot see this app's releases (HTTP 404). The in-app update check works only when the repository and its releases are public.",
     update_err_json: "GitHub returned an invalid response (expected JSON).",
     update_notice: "New version {latest} (you have {current}) — Settings → Updates.",
-    update_err_unknown: "unknown error"
+    update_err_unknown: "unknown error",
+
+    /* ---------- 1.21.0 ---------- */
+    exit_title: "Quit the app?",
+    exit_hint: "Close OpenIPTV or stay on the channel list.",
+    exit_confirm: "⏻ Quit the app",
+    exit_cancel: "✕ Stay",
+    exit_manual: "This platform does not let the app close its own window — use the exit button on the remote.",
+
+    /* ---------- 1.21.0 — remote manual in the settings (“REMOTE IN THE PLAYER”) ---------- */
+    player_keys: "REMOTE IN THE PLAYER",
+    player_keys_hint: "This is how the remote works while a channel or a recording plays. The “◀ ▶ seek” option affects the arrow keys only — ⏪ ⏩ always seek. On a touch screen the same actions sit on the bar at the bottom of the picture.",
+    key_ok_short: "The bar with the channel name, current programme and progress: show or hide.",
+    key_ok_hold: "Hold for about a second: the channel options menu (favourites, archive, TV guide, restart, mute).",
+    key_menu: "The same channel options menu, without holding OK.",
+    key_updown: "Next and previous channel on the visible list (like CH+ / CH−), wrapping around at both ends. One press is one change.",
+    key_leftright: "Seeking by the “archive seek step” setting: on a recording it jumps back and forward, on a live channel ◀ enters catch-up and ▶ resumes the paused picture.",
+    key_rewff: "The remote's own seek keys always work, even with the arrows switched off; ⏩ at the end of a programme goes back live.",
+    key_playpause: "Pause and resume. After a longer pause a live channel returns to the moment you stopped it through catch-up; without archive the picture simply rejoins the stream.",
+    key_stop: "Freeze the picture — the same as pause.",
+    key_mute: "Mutes the player; the TV volume is left untouched.",
+    key_back: "Back",
+    key_back_desc: "Closes the menu or the bar; from the player it goes back to the channel list, and from the list it asks “Quit the app?”."
   };
 
   var I18N = { pl: I18N_PL, en: I18N_EN };
@@ -430,11 +502,111 @@
     return s;
   }
 
+  /* =====================  IKONY WEKTOROWE PRZYCISKÓW  =====================
+     Ikony rysujemy jako SVG, a nie znakami emoji: na dekoderach telewizyjnych
+     (Fire TV, webOS) czcionka emoji bywa okrojona i z „📅 Program TV” zostaje
+     kropka — a przyciski bez napisu (zębatka, odświeżanie) na telewizorze
+     dodatkowo dostawały padding reguły ogólnej i ich SVG był ściśnięty do
+     kreski (patrz styles.css: body.uimode-tv .icon-button).
+
+     Napisy w słownikach nadal mają emoji na początku — jest z nich czytelny
+     kod i instrukcja — więc przy wstawianiu na przycisk odcinamy ten znak
+     (labelWithoutIcon) i zamiast niego wstawiamy ikonę. Kolejność: znak przed
+     napisem („✕ Wstecz”) albo po nim („Następny ▶”). */
+
+  var ICON_PATHS = {
+    calendar: '<rect x="3" y="4.5" width="18" height="17" rx="2"/><path d="M16 2.5v4M8 2.5v4M3 10.5h18"/>',
+    play: '<polygon fill="currentColor" points="7 5 19 12 7 19"/>',
+    pause: '<rect fill="currentColor" x="6.5" y="5" width="4" height="14" rx="1"/><rect fill="currentColor" x="13.5" y="5" width="4" height="14" rx="1"/>',
+    stop: '<rect fill="currentColor" x="6" y="6" width="12" height="12" rx="2"/>',
+    rewind: '<polygon fill="currentColor" points="13 12 21 6.5 21 17.5"/><polygon fill="currentColor" points="3 12 11 6.5 11 17.5"/>',
+    forward: '<polygon fill="currentColor" points="11 12 3 6.5 3 17.5"/><polygon fill="currentColor" points="21 12 13 6.5 13 17.5"/>',
+    prev: '<path d="M15 18l-6-6 6-6"/>',
+    next: '<path d="M9 18l6-6-6-6"/>',
+    star: '<polygon points="12 2.8 14.9 8.7 21.4 9.6 16.7 14.2 17.8 20.6 12 17.6 6.2 20.6 7.3 14.2 2.6 9.6 9.1 8.7"/>',
+    "star-filled": '<polygon fill="currentColor" points="12 2.8 14.9 8.7 21.4 9.6 16.7 14.2 17.8 20.6 12 17.6 6.2 20.6 7.3 14.2 2.6 9.6 9.1 8.7"/>',
+    mute: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19"/><path d="M22 9l-6 6M16 9l6 6"/>',
+    volume: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 6a9 9 0 0 1 0 12"/>',
+    close: '<path d="M18 6L6 18M6 6l12 12"/>',
+    power: '<path d="M18.4 6.6a9 9 0 1 1-12.8 0"/><path d="M12 2.5v9"/>',
+    swap: '<path d="M8 3v18M4 7l4-4 4 4M16 21V3M12 17l4 4 4-4"/>',
+    check: '<path d="M20 6L9 17l-5-5"/>'
+  };
+
+  /* znak (albo para znaków) na brzegu napisu → nazwa ikony SVG */
+  var ICON_BY_LEAD = {
+    "⏵": "play", "⏸": "pause", "⏹": "stop", "⏪": "rewind", "⏩": "forward",
+    "◀": "prev", "▶": "next", "★": "star-filled", "☆": "star",
+    "📅": "calendar", "🔇": "mute", "🔊": "volume", "✕": "close",
+    "⏻": "power", "⇅": "swap", "✓": "check"
+  };
+
+  /* emoji trzymają się parami znaków (📅 = D83D DCC5), dlatego próbujemy dwa
+     znaki, a dopiero potem jeden — inaczej „Następny ▶” złapałoby złą ikonę */
+  function iconEdge(text, fromEnd) {
+    for (var i = 2; i > 0; i--) {
+      var part = fromEnd ? text.slice(-i) : text.slice(0, i);
+      if (ICON_BY_LEAD[part]) return { name: ICON_BY_LEAD[part], size: i, atEnd: !!fromEnd };
+    }
+    return null;
+  }
+
+  function iconForLabel(label) {
+    var text = String(label === undefined || label === null ? "" : label);
+    var head = iconEdge(text, false);
+    if (head) return head.name;
+    var tail = iconEdge(text, true);
+    return tail ? tail.name : null;
+  }
+
+  /* ten sam napis, ale bez znaku ikony — na przycisku rysuje ją SVG */
+  function labelWithoutIcon(label) {
+    var text = String(label === undefined || label === null ? "" : label);
+    var head = iconEdge(text, false);
+    if (head) return text.slice(head.size).replace(/^\s+/, "");
+    var tail = iconEdge(text, true);
+    if (tail) return text.slice(0, -tail.size).replace(/\s+$/, "");
+    return text;
+  }
+
+  function iconHtml(name) {
+    var body = ICON_PATHS[name];
+    if (!body) return "";
+    return '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"' +
+      ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round"' +
+      ' aria-hidden="true" focusable="false">' + body + "</svg>";
+  }
+
+  /* Napis przycisku razem z ikoną. Ikona jest SVG, więc nie zależy od czcionki
+     emoji, a textContent nie może jej zjeść — dlatego wszystkie przyciski
+     z ikoną przechodzą przez tę funkcję. Bez drugiego argumentu ikonę bierzemy
+     ze znaku na brzegu napisu. */
+  function setIconLabel(element, iconName, label) {
+    if (!element) return "";
+    if (arguments.length === 2) { label = iconName; iconName = iconForLabel(label); }
+    var text = labelWithoutIcon(label);
+    element.classList.add("has-icon");
+    element.innerHTML = iconHtml(iconName);
+    if (!iconName) element.classList.remove("has-icon");
+    if (text) {
+      var span = document.createElement("span");
+      span.className = "icon-label";
+      span.textContent = text;
+      element.appendChild(span);
+    }
+    return text;
+  }
+
   function applyTranslations() {
     var els = document.querySelectorAll("[data-i18n]");
     for (var i = 0; i < els.length; i++) {
       var v = t(els[i].getAttribute("data-i18n"));
-      if (v !== undefined) els[i].textContent = v;
+      if (v === undefined) continue;
+      /* napisy ze znakiem ikony („⇅ Kolejność grup”) dostają SVG — ale tylko
+         one: do <option> i innych kontenerów tekstowych nie wolno wstawiać
+         elementów potomnych, a bez ikony textContent wystarcza */
+      if (iconForLabel(v)) setIconLabel(els[i], v);
+      else els[i].textContent = v;
     }
     var ph = document.querySelectorAll("[data-i18n-placeholder]");
     for (var j = 0; j < ph.length; j++) {
@@ -797,8 +969,11 @@
       $(SCREENS[i]).classList.toggle("hidden", SCREENS[i] !== id);
     }
     window.setTimeout(function () {
-      var first = $(id).querySelector('[tabindex="0"],button,input,select');
-      if (first) first.focus();
+      /* fokus wchodzi na przycisk, nigdy na pole tekstowe: na telewizorze
+         klawiatura ekranowa zasłaniałaby listę, a po zapisaniu ustawień samo
+         włączało się szukanie kanałów (patrz entryFocusTarget) */
+      var first = entryFocusTarget($(id));
+      if (first && first.focus) first.focus();
     }, 30);
   }
 
@@ -824,6 +999,10 @@
     $("osdEnabled").checked = settings.osdEnabled !== false;
     $("settingsError").textContent = "";
     resetUpdateStatus();
+    /* „Wstecz” w ustawieniach wychodzi bez zapisu — przy pierwszym uruchomieniu
+       (brak playlisty) nie ma dokąd wrócić, więc przycisk jest ukryty */
+    var backButton = $("settingsBack");
+    if (backButton) backButton.classList.toggle("hidden", !state.channels.length);
     /* ciche sprawdzenie: pokaże tylko informację o nowszej wersji i krótko,
        co się zmieniło — żadnego pobierania ani instalacji bez naciśnięcia przycisku */
     checkForUpdates(true);
@@ -901,6 +1080,90 @@
       };
       if (asBinary) reader.readAsArrayBuffer(file);
       else reader.readAsText(file, "UTF-8");
+    });
+  }
+
+  /* --------------- wybór pliku M3U / EPG bez okna systemowego ----------------
+     W przeglądarce i na telefonie plik wybiera systemowe okno (ukryte pole
+     <input type="file"> pod przyciskiem). Na telewizorze — typowy Fire TV — takiego
+     okna często nie ma w ogóle i przycisk „Wybierz plik” tylko milczy. Wybór
+     przejmuje wtedy natywny plugin OpenIptvFiles (paczka Android): pokazuje
+     własną listę katalogów pamięci i karty USB, kopiuje plik do pamięci aplikacji
+     i oddaje tu jego ścieżkę. Plik czytamy przez lokalny serwer Capacitora. */
+
+  function nativeFilePicker() {
+    var C = (typeof window !== "undefined") ? window.Capacitor : null;
+    var plugin = C && C.Plugins ? C.Plugins.OpenIptvFiles : null;
+    return plugin && plugin.pickFile ? plugin : null;
+  }
+
+  function pickedFileUrl(path) {
+    var C = (typeof window !== "undefined") ? window.Capacitor : null;
+    if (C && typeof C.convertFileSrc === "function") return C.convertFileSrc(path);
+    return (window.location.origin || "") + "/_capacitor_file_" + path;
+  }
+
+  function pickedFileRead(path, asBinary) {
+    return fetch(pickedFileUrl(path)).then(function (response) {
+      if (!response.ok) throw new Error(String(response.status));
+      return asBinary ? response.arrayBuffer() : response.text();
+    });
+  }
+
+  function setSettingsError(message) {
+    $("settingsError").textContent = message || "";
+  }
+
+  function applyPlaylistFile(name, text) {
+    draft.playlistText = String(text || "");
+    draft.playlistName = name || "playlist.m3u";
+    setSettingsError("");
+    updatePlaylistPicker();
+  }
+
+  function applyEpgFile(name, buffer) {
+    draft.epgText = gunzipText(buffer);
+    draft.epgName = name || "epg.xml";
+    setSettingsError("");
+    updateEpgPicker();
+  }
+
+  /* Wybór pliku: najpierw systemowy (plugin w paczce Android), a gdy go nie ma —
+     zostaje ukryte pole <input type="file"> (przeglądarka, webOS). */
+  function startFilePick(kind) {
+    var input = $(kind === "epg" ? "epgFile" : "playlistFile");
+    var plugin = nativeFilePicker();
+    if (!plugin) {
+      /* Na webOS systemowe okno wyboru pliku nie istnieje, więc zamiast milczeć
+         mówimy wprost, czym zastąpić plik (link albo Xtream). */
+      if (platformInfo && platformInfo.os === "webos") setSettingsError(t("pick_no_files"));
+      else if (input) input.click();
+      return;
+    }
+
+    plugin.pickFile({ kind: kind, title: t(kind === "epg" ? "pick_epg_file" : "pick_m3u_file") })
+      .then(function (picked) {
+        if (!picked || picked.cancelled) return;
+        if (!picked.path) {
+          setSettingsError(t("pick_no_files"));
+          return;
+        }
+        loadPickedFile(kind, picked.name, picked.path);
+      }, function () {
+        setSettingsError(t("pick_no_files"));
+      });
+  }
+
+  function loadPickedFile(kind, name, path) {
+    pickedFileRead(path, kind === "epg").then(function (data) {
+      try {
+        if (kind === "epg") applyEpgFile(name, data);
+        else applyPlaylistFile(name, data);
+      } catch (error) {
+        setSettingsError(t("pick_epg_unzip", { error: error.message }));
+      }
+    }, function () {
+      setSettingsError(t(kind === "epg" ? "pick_epg_error" : "pick_m3u_error"));
     });
   }
 
@@ -1757,6 +2020,11 @@
       /* 1) najpierw pokazujemy kanały */
       renderCategories();
 
+      /* Pilot: po wczytaniu listy fokus wchodzi w kanały — inaczej zostawał
+         w nagłówku (albo w polu szukania) i trzeba było szukać listy strzałkami.
+         Gdy użytkownik właśnie pisze zapytanie, nie przerywamy mu. */
+      if (isTvMode() && document.activeElement !== $("searchInput")) focusChannelEntry();
+
       /* 2) EPG w tle (o ile włączone przy starcie) */
       if (settings.epgReloadOnStart) {
         loadEpgInBackground(profile, state.epgUrl);
@@ -1902,11 +2170,11 @@
     var hint = $("groupOrderHint");
     if (toggle) {
       toggle.classList.toggle("hidden", !canOrder);
-      toggle.textContent = t(state.orderEdit ? "group_order_done" : "group_order");
+      setIconLabel(toggle, t(state.orderEdit ? "group_order_done" : "group_order"));
     }
     if (reset) {
       reset.classList.toggle("hidden", !(canOrder && state.orderEdit));
-      reset.textContent = t("order_reset");
+      setIconLabel(reset, t("order_reset"));
     }
     if (hint) hint.classList.toggle("hidden", !(canOrder && state.orderEdit));
 
@@ -1924,13 +2192,14 @@
       button.className = "category";
       button.type = "button";
       button.tabIndex = 0;
-      button.textContent = item.label;
+      setIconLabel(button, item.label);
       button.setAttribute("data-key", item.key);
+      /* Grupa zmienia się tylko po naciśnięciu OK (klik) — samo dojechanie
+         fokusem nie może przełączać listy kanałów: pilot schodząc z kanałów
+         na przyciski grup przerzucał wtedy kategorię w trakcie przewijania. */
       button.onclick = function () {
         selectGroup(item.key, button);
-      };
-      button.onfocus = function () {
-        selectGroup(item.key, button);
+        if (nextFocusAfterGroup(isTvMode()) === "channels") focusChannelEntry();
       };
       buttons[item.key] = button;
 
@@ -2192,7 +2461,7 @@
     var favorite = document.createElement("button");
     favorite.className = "favorite-button";
     favorite.tabIndex = 0;
-    favorite.textContent = isFavorite(channel) ? "★" : "☆";
+    setIconLabel(favorite, isFavorite(channel) ? "★" : "☆");
     favorite.onclick = function () {
       toggleFavorite(channel);
     };
@@ -2202,7 +2471,7 @@
       var archive = document.createElement("button");
       archive.className = "archive-button";
       archive.tabIndex = 0;
-      archive.textContent = "⏪";
+      setIconLabel(archive, "⏪");
       archive.title = "Archiwum / catch-up";
       archive.onclick = function () {
         openArchive(channel);
@@ -2837,6 +3106,9 @@
     state.sourceIndex = -1;          /* -1 → pierwszy wpis wybierze nextSourceEntry() */
     state.watchChannel = channel;
     state.watchProgram = program || null;
+    /* nowy kanał (albo nowe okno archiwum) = poprzednia pauza na żywo nie
+       obowiązuje — inaczej „wznów” wróciłoby do starego kanału */
+    state.livePauseAt = 0;
     state.lastErrorAt = 0;
     destroyEngine();
 
@@ -2863,6 +3135,36 @@
     if (settings.osdEnabled !== false) showOsd();
 
     nextSourceEntry("", 0, true);
+  }
+
+  /* ▲ / ▼ (oraz CH+ / CH− na pilocie) w odtwarzaczu: kanał wyżej albo niżej na
+     tej samej liście, którą widzi użytkownik (kategoria i wyszukiwanie), z
+     zawijaniem na końcach. Kanał oglądany z EPG innej kategorii szukamy w całej
+     playliście, żeby przełączanie nigdy nie „nie działało”. */
+  function zapChannel(direction) {
+    var channel = state.watchChannel;
+    if (!channel) return;
+
+    var list = state.listItems && state.listItems.length ? state.listItems : state.channels;
+    var index = listIndex(list, channel);
+    if (index < 0) {
+      list = state.channels;
+      index = listIndex(list, channel);
+    }
+    if (index < 0 || list.length < 2) return;
+
+    var next = list[(index + direction + list.length) % list.length];
+    if (!next) return;
+    /* nowy kanał startuje na żywo — tak jak przy przełączaniu z listy */
+    playChannel(next, null, "playerScreen");
+  }
+
+  function listIndex(list, channel) {
+    var key = keyOf(channel);
+    for (var i = 0; i < list.length; i++) {
+      if (keyOf(list[i]) === key) return i;
+    }
+    return -1;
   }
 
   function showPlayerError(message) {
@@ -2904,10 +3206,12 @@
     state.cycle = 0;
     state.watchChannel = null;
     state.watchProgram = null;
+    state.livePauseAt = 0;
     /* unieważnia spóźnione wczytywanie biblioteki po wyjściu z kanału */
     nextEngineToken();
     destroyEngine();
     hideContextMenu();
+    hideExitDialog();
     hideOsd();
     video.pause();
     video.removeAttribute("src");
@@ -2940,9 +3244,12 @@
 
     var step = seekStep();
 
-    /* kanał na żywo: ⏪ wchodzi w catch-up o krok, ⏩ nie ma czego przewijać */
+    /* kanał na żywo: ◀ wchodzi w catch-up o krok, ▶ na zatrzymanym obrazie
+       po prostu wznawia (od miejsca pauzy), a na lecącym nie ma czego
+       przewijać — zostaje pasek z informacją */
     if (!state.isArchive) {
       if (direction < 0) timeshiftBack();
+      else if (video.paused) resumePlayback();
       else showOsd();
       return;
     }
@@ -3007,6 +3314,11 @@
       ? Math.ceil(video.duration)
       : 0;
     var now = Date.now();
+    /* wstrzymany kanał na żywo: cofamy się od miejsca zatrzymania, a nie od
+       „teraz” — inaczej ◀ po pauzie przeniosłoby obraz do przodu */
+    if (state.livePauseAt) {
+      behind = Math.max(behind, Math.round((now - state.livePauseAt) / 1000));
+    }
     var program = currentProgram(channel);
 
     playChannel(channel, {
@@ -3081,6 +3393,74 @@
     }
   }
 
+  /* ---------------------  STRZAŁKI W POLU SZUKANIA  ---------------------
+     Pole tekstowe zjada strzałki (przesuwa w nim kursor), a pilot nie ma
+     Tab — bez tego z szukania nie dało się wyjść: ani do listy grup, ani do
+     kanałów. Dlatego: ▼ prowadzi do listy kanałów, ◀ zabiera tekst dopiero
+     wtedy, gdy kursor stoi na jego początku (inaczej nie dałoby się poprawić
+     zapytania), a ▶ przy końcu tekstu przechodzi do następnego pola paska. */
+  function searchArrowTarget(keyCode, caretAtStart, caretAtEnd) {
+    if (keyCode === 40) return "channels";
+    if (keyCode === 37 && caretAtStart) return "categories";
+    if (keyCode === 39 && caretAtEnd) return "bar";
+    return "";
+  }
+
+  /* po wybraniu grupy (OK / klik) w trybie TV wchodzimy od razu w jej kanały */
+  function nextFocusAfterGroup(tvMode) {
+    return tvMode ? "channels" : "";
+  }
+
+  function focusActiveCategory() {
+    var target = document.querySelector(".category.active") || document.querySelector(".category");
+    if (target && target.focus) {
+      try { target.focus(); } catch (error) { /* bez fokusu też da się kliknąć */ }
+    }
+  }
+
+  function focusChannelEntry() {
+    var container = $("channels");
+    var card = container && container.querySelector
+      ? (container.querySelector(".channel-main") || container.querySelector(".channel"))
+      : null;
+    if (card && card.focus) {
+      try { card.focus(); } catch (error) { /* bez fokusu też da się kliknąć */ }
+      return true;
+    }
+    focusNearest(40);
+    return false;
+  }
+
+  /* Pola tekstowe nie dostają fokusu przy wejściu na ekran: na telewizorze
+     wyskakiwałaby z nich klawiatura ekranowa (po zapisaniu ustawień lista
+     kanałów od razu wpadała w tryb szukania), a na telefonie zasłaniałaby
+     połowę listy. */
+  function isTextField(element) {
+    if (!element || element.tagName !== "INPUT") return false;
+    var type = String(element.getAttribute("type") || "text").toLowerCase();
+    return type !== "checkbox" && type !== "radio" && type !== "button" &&
+      type !== "submit" && type !== "range";
+  }
+
+  /* na co ma stanąć fokus po pokazaniu ekranu: lista kanałów zaczyna na
+     kategorii (z niej ▼ / ▶ prowadzą do kanałów), inne ekrany — jak dotąd,
+     z pominięciem pól tekstowych */
+  function entryFocusTarget(screen) {
+    if (!screen) return null;
+    if (screen.id === "browserScreen" && screen.querySelector) {
+      var active = screen.querySelector(".category.active") || screen.querySelector(".category");
+      if (active) return active;
+    }
+    if (!screen.querySelectorAll) return null;
+    var all = screen.querySelectorAll('[tabindex="0"],button,input,select');
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].offsetParent === null) continue;
+      if (isTextField(all[i])) continue;
+      return all[i];
+    }
+    return null;
+  }
+
   /* Ruch pilotem po siatce EPG: ▲ / ▼ przeskakują do najbliższego programu w
      sąsiednim wierszu (kanale) — fokus trzyma się kolumny czasu. ◀ / ▶ nadal
      przewijają całą oś, a OK uruchamia program albo catch-up. */
@@ -3143,11 +3523,25 @@
     });
   }
 
-  function openGuide() {
+  /* Program TV. Bez argumentów pokazuje całą kategorię; z kanałem (otwarcie
+     z paska odtwarzacza) staje na oglądanym kanale i wraca potem do obrazu. */
+  function openGuide(options) {
+    var opts = options || {};
     var now = Date.now();
     guide.windowStart = now - (now % 3600000) - 3600000;
+    guide.focusKey = opts.channel ? keyOf(opts.channel) : "";
+    guide.returnTo = opts.returnTo || "browserScreen";
     renderGuide();
     showScreen("guideScreen");
+    focusGuideWatched();
+  }
+
+  /* powrót z programu TV tam, skąd przyszedł: do odtwarzacza albo do listy */
+  function closeGuide() {
+    var target = guide.returnTo === "playerScreen" ? "playerScreen" : "browserScreen";
+    guide.focusKey = "";
+    guide.returnTo = "browserScreen";
+    showScreen(target);
   }
 
   /* przewijanie o cały dzień — zachowuje wybraną godzinę */
@@ -3244,9 +3638,22 @@
     var now = Date.now();
     var rows = guideChannels();
     var hiddenRows = Math.max(0, rows.length - GUIDE_ROWS);
-    rows.slice(0, GUIDE_ROWS).forEach(function (channel) {
+    /* EPG otwarte z odtwarzacza: oglądany kanał musi być w siatce, nawet gdy
+       leży daleko na liście — inaczej trzeba by go szukać pilotem */
+    var first = 0;
+    if (guide.focusKey) {
+      for (var f = 0; f < rows.length; f++) {
+        if (keyOf(rows[f]) === guide.focusKey) {
+          if (f >= GUIDE_ROWS) first = f - 3;
+          break;
+        }
+      }
+    }
+    rows.slice(first, first + GUIDE_ROWS).forEach(function (channel) {
       var row = document.createElement("div");
       row.className = "guide-row";
+      row.setAttribute("data-key", keyOf(channel));
+      if (guide.focusKey && keyOf(channel) === guide.focusKey) row.classList.add("watching");
 
       var name = document.createElement("div");
       name.className = "guide-channel";
@@ -3306,6 +3713,25 @@
     var timeEl = $("guideTime");
     var ts = pad2(from.getHours()) + ":" + pad2(from.getMinutes());
     if (timeEl && timeEl.value !== ts) timeEl.value = ts;
+  }
+
+  /* Fokus (i przewinięcie siatki) na oglądanym kanale — EPG otwarte z paska
+     odtwarzacza od razu pokazuje, co leci teraz na tym kanale. */
+  function focusGuideWatched() {
+    var grid = $("guideGrid");
+    if (!grid || !guide.focusKey) return;
+    var rows = grid.querySelectorAll(".guide-row");
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].getAttribute("data-key") !== guide.focusKey) continue;
+      var block = rows[i].querySelector(".guide-program.now:not([disabled])") ||
+        rows[i].querySelector(".guide-program:not([disabled])");
+      if (block) {
+        try { block.focus(); } catch (error) { /* bez fokusu też da się kliknąć */ }
+        try { block.scrollIntoView({ block: "nearest", inline: "center" }); }
+        catch (error2) { block.scrollIntoView(false); }
+      }
+      return;
+    }
   }
 
   /* =========================  OSD ODTWARZACZA (MINI-EPG)  =========================
@@ -3382,7 +3808,7 @@
     button.type = "button";
     button.className = "osd-button";
     button.tabIndex = 0;
-    button.textContent = label;
+    setIconLabel(button, label);
     button.setAttribute("data-osd", id);
     button.onclick = function (event) {
       if (event) event.stopPropagation();
@@ -3412,23 +3838,85 @@
       bar.appendChild(osdButton("restart", t("osd_restart"), restartWatching));
     }
 
+    /* EPG oglądanego kanału: siatka staje na tym kanale, a Wstecz wraca do
+       obrazu (nie do listy kanałów) */
+    bar.appendChild(osdButton("epg", t("osd_epg"), function () {
+      openGuide({ channel: state.watchChannel, returnTo: "playerScreen" });
+    }));
+    bar.appendChild(osdButton("mute", t("osd_mute"), toggleMute));
+
     bar.appendChild(osdButton("options", t("ctx_menu"), function () {
       openContextMenu(state.watchChannel);
     }));
     bar.appendChild(osdButton("back", t("osd_back"), stopPlayback));
   }
 
+  /* ⏵‖ (przycisk na pasku i klawisz play/pauza na pilocie). */
   function togglePlayPause() {
     var video = $("video");
     if (!video) return;
-    if (video.paused) {
-      var promise = video.play();
-      if (promise && promise.catch) promise.catch(function () {});
-    } else {
-      video.pause();
+    if (video.paused) resumePlayback();
+    else pausePlayback();
+  }
+
+  /* Pauza na kanale na żywo zapamiętuje chwilę zatrzymania — obraz leci dalej,
+     więc wznowienie musi wrócić dokładnie tam (patrz resumePlayback). */
+  function pausePlayback() {
+    var video = $("video");
+    if (!video) return;
+    if (!state.isArchive && state.watchChannel) state.livePauseAt = Date.now();
+    video.pause();
+    showOsd();
+    updateOsd();
+  }
+
+  /* Wznowienie po pauzie. Kanał na żywo po dłuższej pauzie zdążył uciec do
+     przodu, więc wracamy do momentu zatrzymania przez archiwum (okno catch-up
+     kończące się teraz). Bez archiwum — albo przy krótkiej pauzie — zwykłe
+     wznowienie odtwarzacza. */
+  function resumePlayback() {
+    var video = $("video");
+    if (!video) return;
+
+    var channel = state.watchChannel;
+    var pausedAt = state.livePauseAt;
+    state.livePauseAt = 0;
+
+    if (!state.isArchive && channel && pausedAt &&
+        Date.now() - pausedAt > RESUME_AFTER_PAUSE && hasArchive(channel)) {
+      var program = currentProgram(channel);
+      playChannel(channel, {
+        start: pausedAt,
+        end: Date.now(),
+        title: program ? program.title : channel.name,
+        timeshift: true
+      }, "playerScreen");
+      return;
     }
+
+    var promise = video.play();
+    if (promise && promise.catch) promise.catch(function () {});
     updateOsd();
     scheduleOsdHide();
+  }
+
+  /* 🔇 na pilocie (i przycisk na pasku): wyciszenie dźwięku strumienia.
+     Głośność samego telewizora należy do sprzętu — tu wyciszamy odtwarzacz. */
+  function toggleMute() {
+    var video = $("video");
+    if (!video) return;
+    video.muted = !video.muted;
+    showOsd();
+    updateOsd();
+  }
+
+  function isMuted() {
+    var video = $("video");
+    return !!(video && video.muted);
+  }
+
+  function muteLabel() {
+    return t(isMuted() ? "osd_unmute" : "osd_mute");
   }
 
   /* „Od początku”: w archiwum powtarza bieżące nagranie, na kanale na żywo
@@ -3528,12 +4016,13 @@
       }
       if (nextRow) {
         nextRow.textContent = next
-          ? t("osd_next_label") + " " + osdTime(next.start) + "  " + next.title
+          ? t("osd_next_label") + " " + osdTime(next.start) + "–" + osdTime(next.end) + "  " + next.title
           : "";
       }
       if (timeEl) {
         timeEl.textContent = engineLabel(state.engine) +
-          (video && video.paused ? " • " + t("osd_paused") : "");
+          (video && video.paused ? " • " + t("osd_paused") : "") +
+          (video && video.muted ? " • " + t("osd_muted") : "");
       }
       if (hintEl) hintEl.textContent = t("osd_hint_live");
     }
@@ -3542,7 +4031,9 @@
 
     var bar = $("playerActions");
     var playButton = bar ? bar.querySelector('[data-osd="play"]') : null;
-    if (playButton) playButton.textContent = t(video && video.paused ? "osd_play" : "osd_pause");
+    if (playButton) setIconLabel(playButton, t(video && video.paused ? "osd_play" : "osd_pause"));
+    var muteButton = bar ? bar.querySelector('[data-osd="mute"]') : null;
+    if (muteButton) setIconLabel(muteButton, muteLabel());
   }
 
   /* tanie odświeżanie (timeupdate / zegar): tylko pasek postępu i czas */
@@ -3557,7 +4048,10 @@
     if (state.isArchive && video && isFinite(video.duration) && video.duration > 0) {
       bar.style.width = (video.currentTime / video.duration) * 100 + "%";
       var timeEl = $("playerTime");
-      if (timeEl) timeEl.textContent = formatTime(video.currentTime) + " / " + formatTime(video.duration);
+      if (timeEl) {
+        timeEl.textContent = formatTime(video.currentTime) + " / " + formatTime(video.duration) +
+          (video.muted ? " • " + t("osd_muted") : "");
+      }
       return;
     }
 
@@ -3587,7 +4081,7 @@
     var button = document.createElement("button");
     button.type = "button";
     button.tabIndex = 0;
-    button.textContent = label;
+    setIconLabel(button, label);
     button.onclick = function (event) {
       if (event) event.stopPropagation();
       action();
@@ -3602,6 +4096,8 @@
     hideContextMenu();
     var target = channel || state.watchChannel || state.selectedChannel;
     if (!target) return;
+    /* z odtwarzacza (MENU / trzymane OK) menu dostaje dodatkowo akcje obrazu */
+    var inPlayer = currentScreenId() === "playerScreen" && !!state.watchChannel;
 
     var menu = document.createElement("section");
     menu.id = "contextMenu";
@@ -3642,8 +4138,41 @@
 
     actions.appendChild(ctxButton(t("ctx_epg"), function () {
       hideContextMenu();
-      openGuide();
+      if (inPlayer) openGuide({ channel: target, returnTo: "playerScreen" });
+      else openGuide();
     }));
+
+    if (inPlayer) {
+      /* Odtwarzacz: te same akcje co na pasku. Pilotem ▲▼ zmieniają kanał, więc
+         do opcji obrazu dochodzi się przez MENU albo trzymane OK. */
+      if (state.watchProgram) {
+        actions.appendChild(ctxButton(t("osd_restart"), function () {
+          hideContextMenu();
+          restartWatching();
+        }));
+        actions.appendChild(ctxButton(t("osd_prev_program"), function () {
+          hideContextMenu();
+          watchProgramStep(-1);
+        }));
+        actions.appendChild(ctxButton(t("osd_next_program"), function () {
+          hideContextMenu();
+          watchProgramStep(1);
+        }));
+        actions.appendChild(ctxButton(t("osd_live"), function () {
+          hideContextMenu();
+          goLive();
+        }));
+      } else if (currentProgram(target)) {
+        actions.appendChild(ctxButton(t("osd_restart"), function () {
+          hideContextMenu();
+          restartWatching();
+        }));
+      }
+      actions.appendChild(ctxButton(muteLabel(), function () {
+        hideContextMenu();
+        toggleMute();
+      }));
+    }
 
     actions.appendChild(ctxButton(t("ctx_close"), hideContextMenu));
 
@@ -3702,6 +4231,10 @@
      i dla sprzętowego Back na Android TV / Fire TV (MainActivity pyta o nią
      przez window.__openiptvBack). Zwraca true, gdy zdarzenie zostało zużyte. */
   function handleBack() {
+    if ($("exitDialog")) {
+      hideExitDialog();          /* Wstecz na pytaniu o wyjście = zostaję */
+      return true;
+    }
     if ($("contextMenu")) {
       hideContextMenu();
       return true;
@@ -3715,14 +4248,90 @@
       return true;
     }
     if (!$("guideScreen").classList.contains("hidden")) {
-      showScreen("browserScreen");
+      /* program TV wraca tam, skąd został otwarty (obraz albo lista) */
+      closeGuide();
       return true;
     }
     if (!$("settingsScreen").classList.contains("hidden") && state.channels.length) {
       showScreen("browserScreen");
       return true;
     }
-    return false;   /* nie ma czego zamykać — na Androidzie aplikacja może wyjść */
+    /* Główna lista (albo ustawienia bez wczytanej playlisty): Wstecz najpierw
+       pyta, czy na pewno wyjść — jedno naciśnięcie pilota nie może kończyć
+       oglądania. Samo zamknięcie aplikacji robi requestExit(). */
+    showExitConfirm();
+    return true;
+  }
+
+  /* ------------------------  WYJŚCIE Z APLIKACJI  ------------------------
+     Zamknięcie okna zależy od platformy: w WebView na Androidzie i Fire TV
+     window.close() jest ignorowane, więc pytanie o wyjście woła most
+     OpenIptvNative.quit() z MainActivity (patrz bindExitBridge). Na webOS
+     i Tizenie wystarczy zamknięcie okna aplikacji. W zwykłej przeglądarce
+     kartę może zamknąć tylko użytkownik — wtedy zostaje podpowiedź, żeby użyć
+     przycisku wyjścia na pilocie. */
+  function requestExit() {
+    var bridge = window.OpenIptvNative;
+    if (bridge && typeof bridge.quit === "function") {
+      try {
+        bridge.quit();
+        return true;
+      } catch (error) { /* brak mostu — próbujemy dalej */ }
+    }
+    var tizen = window.tizen;
+    if (tizen && tizen.application && tizen.application.getCurrentApplication) {
+      try {
+        tizen.application.getCurrentApplication().exit();
+        return true;
+      } catch (error2) { /* starsze wersje Tizena — próbujemy dalej */ }
+    }
+    try {
+      window.close();
+    } catch (error3) { /* okno zostaje otwarte — niżej podpowiedź */ }
+    return false;
+  }
+
+  /* Pytanie „wyjść z aplikacji?” — jak menu kontekstowe, więc pilot obsługuje
+     je bez dodatkowego kodu (▲ ▼ / OK, Wstecz zamyka). */
+  function showExitConfirm() {
+    hideExitDialog();
+
+    var dialog = document.createElement("section");
+    dialog.id = "exitDialog";
+    dialog.className = "ctx-menu";
+
+    var card = document.createElement("div");
+    card.className = "ctx-card";
+
+    var title = document.createElement("h2");
+    title.className = "ctx-title";
+    title.textContent = t("exit_title");
+    card.appendChild(title);
+
+    var hint = document.createElement("p");
+    hint.className = "ctx-sub";
+    hint.id = "exitHint";
+    hint.textContent = t("exit_hint");
+    card.appendChild(hint);
+
+    var actions = document.createElement("div");
+    actions.className = "ctx-actions";
+
+    actions.appendChild(ctxButton(t("exit_confirm"), function () {
+      /* gdy platforma nie pozwala zamknąć okna, okno zostaje z podpowiedzią */
+      if (!requestExit()) $("exitHint").textContent = t("exit_manual");
+    }));
+    actions.appendChild(ctxButton(t("exit_cancel"), hideExitDialog));
+    card.appendChild(actions);
+    dialog.appendChild(card);
+    document.body.appendChild(dialog);
+
+    if (actions.firstChild && actions.firstChild.focus) actions.firstChild.focus();
+  }
+
+  function hideExitDialog() {
+    var dialog = $("exitDialog");
+    if (dialog && dialog.parentNode) dialog.parentNode.removeChild(dialog);
   }
 
   /* Most dla natywnej obsługi Back (Fire TV / Android TV):
@@ -3759,58 +4368,80 @@
 
     /* ------------------------------  ODTWARZACZ  ------------------------------ */
     if (inPlayer) {
-      /* strzałki przy widocznym pasku chodzą po jego przyciskach (mini-EPG) */
-      if (osdVisible() && key >= 37 && key <= 40) {
+      /* Fokus na przycisku paska (mysz, dotyk): strzałki chodzą po pasku.
+         Z pilota fokus siedzi na obrazie, więc strzałki sterują transmisją —
+         dlatego kanału nie przełącza „przypadkowe” wejście w pasek. */
+      var osdFocus = document.activeElement;
+      var onOsdButton = !!(osdFocus && osdFocus.getAttribute && osdFocus.getAttribute("data-osd"));
+      if (onOsdButton && key >= 37 && key <= 40) {
         event.preventDefault();
         focusNearest(key);
         scheduleOsdHide();
         return;
       }
-      /* przewijanie: ⏪/⏩ (webOS 412/417), Android 89/90, ◀ ▶ w archiwum;
-         na kanale na żywo ⏪ wchodzi w catch-up o krok, a ⏩ na końcu okna
-         (program, który wciąż leci) wraca na żywo */
-      if (key === 412 || key === 89 || ((key === 37) && settings.dpadSeek)) {
+
+      /* ▲ ▼ (CH+ / CH−): następny / poprzedni kanał z listy, jak na pilocie
+         telewizora. Trzymana strzałka nie przełącza kanałów seriami. */
+      if (key === 38 || key === 40) {
         event.preventDefault();
-        seekBy(-1);
+        if (event.repeat) return;
+        zapChannel(key === 38 ? -1 : 1);
         return;
       }
-      if (key === 417 || key === 90 || ((key === 39) && settings.dpadSeek)) {
+
+      /* ◀ ▶ — przewijanie obrazu (na kanale na żywo ◀ wchodzi w catch-up o krok,
+         a ▶ na zatrzymanym obrazie wznawia od miejsca pauzy). ⏪ ⏩ pilota
+         (webOS 412/417, Android 89/90) przewijają zawsze, a strzałki tylko przy
+         włączonym ustawieniu „◀ ▶ przewija” — inaczej wracają do nawigacji. */
+      if (key === 412 || key === 417 || key === 89 || key === 90 ||
+          ((key === 37 || key === 39) && settings.dpadSeek)) {
         event.preventDefault();
-        seekBy(1);
+        seekBy(key === 412 || key === 89 || key === 37 ? -1 : 1);
         return;
       }
-      /* OK: krótko = pasek/kliknięcie, trzymane = menu opcji kanału */
+      if (key === 37 || key === 39) {
+        event.preventDefault();
+        focusNearest(key);
+        scheduleOsdHide();
+        return;
+      }
+
+      /* OK: krótko = panel odtwarzacza (albo kliknięcie przycisku paska, gdy
+         fokus już na nim jest), trzymane = menu opcji kanału */
       if (key === 13 || key === 23 || key === 66) {
         event.preventDefault();
         if (event.repeat) return;
-        var active = document.activeElement;
-        var osdTarget = active && active.getAttribute && active.getAttribute("data-osd") ? active : null;
-        startOkHold(osdTarget ? function () { osdTarget.click(); } : null);
+        startOkHold(onOsdButton ? function () { osdFocus.click(); } : null);
         return;
       }
+
+      /* 🔇 na pilocie (449 = webOS / Tizen, 173 = klawiatura) — cisza w obrazie */
+      if (key === 449 || key === 173) {
+        event.preventDefault();
+        if (event.repeat) return;
+        toggleMute();
+        return;
+      }
+
       /* play/pauza: klawisze multimedialne obu platform */
       if (key === 415 || key === 85 || key === 126 || (key === 19 && WEBOS_KEYS)) {
         event.preventDefault();
         togglePlayPause();
         return;
       }
+      /* ⏹ / pauza: na kanale na żywo pauza zapamiętuje chwilę zatrzymania,
+         żeby wznowienie wróciło dokładnie w to miejsce */
       if (key === 127 || key === 93) {
         event.preventDefault();
-        var video = $("video");
-        if (video && !video.paused) video.pause();
-        updateOsd();
+        pausePlayback();
         return;
       }
-      /* MENU (webOS/Tizen 18, Android 82) i ▼ poza paskiem — opcje kanału */
-      if (key === 82 || key === 18 || key === 40) {
+      /* MENU (webOS/Tizen 18, Android 82) — opcje kanału; tutaj są też wszystkie
+         akcje panelu, więc pilot nie musi wchodzić fokusem w pasek */
+      if (key === 82 || key === 18) {
         event.preventDefault();
         openContextMenu(state.watchChannel);
         return;
-      }
-      /* ▲ — przywołaj pasek informacyjny z mini-EPG */
-      if (key === 38) {
-        event.preventDefault();
-        showOsd();
       }
       return;
     }
@@ -3833,6 +4464,30 @@
           (key === 13 || key === 23 || key === 66)) {
         event.preventDefault();
         if (!event.repeat && field.click) field.click();
+      }
+
+      /* Pole szukania: strzałki mają z niego wyprowadzać fokus (pilot nie ma
+         Tab, a klawiatura ekranowa zasłania listę). ◀ i ▶ zostają w polu,
+         dopóki jest w nim co poprawiać — decyduje searchArrowTarget. */
+      if (field === $("searchInput")) {
+        var caret = field.selectionStart === null ? field.value.length : field.selectionStart;
+        var caretEnd = field.selectionEnd === null ? field.value.length : field.selectionEnd;
+        var arrow = searchArrowTarget(key, caret === 0, caretEnd === field.value.length);
+        if (arrow === "channels") {
+          event.preventDefault();
+          focusChannelEntry();
+          return;
+        }
+        if (arrow === "categories") {
+          event.preventDefault();
+          focusActiveCategory();
+          return;
+        }
+        if (arrow === "bar") {
+          event.preventDefault();
+          focusNearest(39);
+          return;
+        }
       }
       return;
     }
@@ -4021,16 +4676,20 @@
   $("checkUpdates").onclick = function () { checkForUpdates(); };
   $("installUpdate").onclick = installAvailableUpdate;
 
+  /* Przyciski „Wybierz plik M3U / EPG”. Na telewizorze wybór prowadzi plugin
+     natywny (własna lista katalogów), w przeglądarce — ukryte pole pliku;
+     decyduje o tym startFilePick(). */
+  $("pickPlaylistFile").onclick = function () { startFilePick("m3u"); };
+  $("pickEpgFile").onclick = function () { startFilePick("epg"); };
+
+  /* Ścieżka zapasowa: plik wskazany w systemowym oknie wyboru plików */
   $("playlistFile").onchange = function () {
     var file = this.files && this.files[0];
     if (!file) return;
     readFile(file, false).then(function (text) {
-      draft.playlistText = String(text || "");
-      draft.playlistName = file.name || "playlist.m3u";
-      $("settingsError").textContent = "";
-      updatePlaylistPicker();
+      applyPlaylistFile(file.name, text);
     }, function () {
-      $("settingsError").textContent = "Nie udało się odczytać pliku M3U.";
+      setSettingsError(t("pick_m3u_error"));
     });
   };
 
@@ -4041,15 +4700,12 @@
        spakowany plik o nazwie .xml też się rozpakuje */
     readFile(file, true).then(function (result) {
       try {
-        draft.epgText = gunzipText(result);
-        draft.epgName = file.name || "epg.xml";
-        $("settingsError").textContent = "";
-        updateEpgPicker();
+        applyEpgFile(file.name, result);
       } catch (error) {
-        $("settingsError").textContent = "Nie udało się rozpakować pliku EPG: " + error.message;
+        setSettingsError(t("pick_epg_unzip", { error: error.message }));
       }
     }, function () {
-      $("settingsError").textContent = "Nie udało się odczytać pliku EPG.";
+      setSettingsError(t("pick_epg_error"));
     });
   };
 
@@ -4099,7 +4755,11 @@
   };
 
   $("openSettings").onclick = openSettings;
-  $("openGuide").onclick = openGuide;
+  /* „Wstecz” w ustawieniach: wyjście bez zapisu. Formularz wczytuje wartości
+     z ustawień przy każdym otwarciu, więc porzucone zmiany nie zostają w pliku
+     (nic nie jest zapisywane, dopóki nie naciśniemy „Zapisz i pobierz”). */
+  $("settingsBack").onclick = function () { showScreen("browserScreen"); };
+  $("openGuide").onclick = function () { openGuide(); };
   var archiveClose = $("archiveClose");
   if (archiveClose) archiveClose.onclick = function () { showScreen("browserScreen"); };
   $("guidePrevDay").onclick = function () { guideShiftDays(-1); };
@@ -4109,7 +4769,9 @@
   $("guideToday").onclick = guideGoToday;
   $("guideDate").onchange = function () { guideGoToDate(this.value); };
   $("guideTime").onchange = function () { guideGoToTime(this.value); };
-  $("guideClose").onclick = function () { showScreen("browserScreen"); };
+  /* Wstecz z programu TV wraca do obrazu, gdy program otwarto z paska
+     odtwarzacza — a do listy kanałów, gdy wszedł z niej (patrz closeGuide) */
+  $("guideClose").onclick = closeGuide;
   $("reload").onclick = loadCatalog;
   /* narzędzia kolejności grup — gdyby HTML ich nie miał, ensureCategoryLayout()
      tworzy je razem z obsługą kliknięcia */
