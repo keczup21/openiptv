@@ -9,6 +9,30 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/), wersje wg [Sem
 `www/appinfo.json`, `package.json`, `android/app/build.gradle`) podbija jedna
 komenda: `npm run bump -- X.Y.Z`.
 
+## [1.19.3] — 2026-10-02
+
+### Dodano
+- **Przewijanie na żywo.** Na kanale na żywo `⏪` wchodzi w catch-up i cofa obraz
+  o krok („Krok przewijania archiwum”: 5 / 10 / 30 s). Kolejne `⏪` na początku
+  okna sięgają dalej wstecz, a `⏩` idzie do przodu tym samym krokiem.
+
+### Naprawiono
+- **`⏩` na końcu okna wraca na żywo.** Przy programie, który wciąż leci, okno
+  nagrania było zamrożone na chwili włączenia, więc przewijanie do przodu nie
+  dawało żadnego efektu. Teraz `⏩` na końcu takiego okna przełącza na LIVE,
+  a na kanale na żywo pokazuje pasek, że obraz już jest na żywo.
+- Podpowiedź na pasku nie obiecuje już przewijania nagrania na żywo.
+
+## [1.19.2] — 2026-10-02
+
+### Naprawiono
+- **OK na pilocie Fire TV rozwija pola formularza.** Klawisz OK był zjadany przez
+  obsługę pilota, więc nie dawało się rozwinąć listy „Typ źródła”. Teraz trafia do
+  WebView (lista, kalendarz, klawiatura), a `checkbox`/`radio` przełączamy sami.
+- **Interfejs nie jest dwa razy za duży na Fire TV / Android TV.** Strona układa
+  się w stałej szerokości 1920 px, a `MainActivity.applyTvViewport()` włącza
+  obsługę „meta viewport”, dzięki czemu projekt jest skalowany do ekranu.
+
 ## [1.19.1] — 2026-10-02
 
 ### Zmieniono

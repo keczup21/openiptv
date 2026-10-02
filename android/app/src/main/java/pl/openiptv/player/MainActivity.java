@@ -5,8 +5,10 @@ import android.content.pm.PackageInfo;
 import android.os.Build;
 import android.os.Bundle;
 import android.webkit.ValueCallback;
+import android.webkit.WebSettings;
 import android.webkit.WebView;
 
+import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
@@ -21,6 +23,31 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(UpdatePlugin.class);
         clearWebViewCacheOnUpdate();
         super.onCreate(savedInstanceState);
+        applyTvViewport();
+    }
+
+    /* Fire TV i Android TV zgłaszają ekran o gęstości 2.0, czyli okno 960x540 px
+       CSS zamiast 1920x1080, i domyślnie ignorują „meta viewport”. Interfejs —
+       projektowany tak samo jak na webOS przy 1920x1080 — wyglądał więc na tych
+       telewizorach dwa razy za duży. Włączamy obsługę „meta viewport” oraz tryb
+       przeglądowy: strona układa się w stałej szerokości 1920 px (patrz skrypt
+       w index.html) i jest skalowana do szerokości ekranu, więc na każdej
+       telewizji wygląda tak samo. Ustawienia trafiają tuż po utworzeniu mostu,
+       a wczytanie strony jest asynchroniczne, więc obowiązują jeszcze przed
+       pierwszym rysowaniem interfejsu. */
+    private void applyTvViewport() {
+        try {
+            Bridge bridge = getBridge();
+            WebView webView = bridge != null ? bridge.getWebView() : null;
+            if (webView == null) return;
+
+            WebSettings settings = webView.getSettings();
+            settings.setUseWideViewPort(true);
+            settings.setLoadWithOverviewMode(true);
+            webView.requestLayout();
+        } catch (Exception ignored) {
+            /* brak możliwości zmiany ustawień nie może blokować startu aplikacji */
+        }
     }
 
     /* Sprzętowy klawisz „Wstecz” na Android TV / Fire TV: najpierw pytamy

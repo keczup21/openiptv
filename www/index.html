@@ -2,7 +2,22 @@
 <html lang="pl">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <!-- Szerokość układu wybieramy przed pierwszym rysowaniem strony. Telewizory
+       (Fire TV, Android TV, webOS) mają gęstość 2.0, czyli okno 960x540 px CSS
+       zamiast 1920x1080, przez co ten sam projekt wyglądał na nich dwa razy za
+       duży. Stała szerokość 1920 px + tryb przeglądowy WebView (patrz
+       MainActivity.applyTvViewport) skalują projekt do szerokości ekranu.
+       Telefony i tablety dostają jak dotąd szerokość swojego ekranu. -->
+  <script>
+    (function () {
+      var ua = (navigator.userAgent || "").toLowerCase();
+      var tv = /web0s|webos|netcast|smarttv|hbbtv|viera|bravia|firetv|fire tv|\baft[a-z0-9]{0,2}\b|android tv|leanback|shield|droidlogic/.test(ua);
+      var meta = document.createElement("meta");
+      meta.setAttribute("name", "viewport");
+      meta.setAttribute("content", tv ? "width=1920" : "width=device-width,initial-scale=1");
+      document.head.appendChild(meta);
+    })();
+  </script>
   <title>OpenIPTV</title>
   <link rel="stylesheet" href="styles.css">
 </head>

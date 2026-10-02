@@ -21,7 +21,7 @@
      był natychmiastowy i nie przepisywał za każdym razem megabajtów danych. */
   var BLOBS_KEY = "openiptvBlobs";
   var BLOB_FIELDS = ["playlistFileText", "epgFileText", "playlistFileName", "epgFileName"];
-  var APP_VERSION = "1.19.1";
+  var APP_VERSION = "1.19.3";
   var SCHEMA_VERSION = 4;
 
   /* „Ostatnio oglądane”: kanał trafia na listę po 10 s oglądania,
@@ -225,8 +225,8 @@
     osd_back: "✕ Wstecz",
     osd_pause: "⏸ Pauza",
     osd_play: "⏵ Wznów",
-    osd_hint_live: "OK – pasek opcji • MENU – opcje kanału • ◀ ▶ – przewijanie nagrania",
-    osd_hint_archive: "OK – pasek opcji • ◀ ▶ – nawigacja paska • ⏪ ⏩ – przewijanie",
+    osd_hint_live: "OK – pasek opcji • MENU – opcje kanału • ⏪ – cofnij o krok (catch-up)",
+    osd_hint_archive: "OK – pasek opcji • ◀ ▶ – nawigacja paska • ⏪ ⏩ – przewijanie • ⏩ na końcu – na żywo",
     osd_now: "Teraz:",
     osd_next_label: "Następnie:",
     osd_paused: "PAUZA",
@@ -350,8 +350,8 @@
     osd_back: "✕ Back",
     osd_pause: "⏸ Pause",
     osd_play: "⏵ Resume",
-    osd_hint_live: "OK – action bar • MENU – channel options • ◀ ▶ – seek recording",
-    osd_hint_archive: "OK – action bar • ◀ ▶ – bar navigation • ⏪ ⏩ – seek",
+    osd_hint_live: "OK – action bar • MENU – channel options • ⏪ – step back (catch-up)",
+    osd_hint_archive: "OK – action bar • ◀ ▶ – bar navigation • ⏪ ⏩ – seek • ⏩ at the end – live",
     osd_now: "Now:",
     osd_next_label: "Next:",
     osd_paused: "PAUSED",
@@ -2780,18 +2780,106 @@
     showScreen(state.playerReturn);
   }
 
+  /* Krok przewijania z ustawień („Krok przewijania archiwum”: 5 / 10 / 30 s) */
+  function seekStep() {
+    var step = parseInt(settings.seekSeconds, 10);
+    return step > 0 ? step : 10;
+  }
+
+  /* Czy odtwarzane okno archiwum kończy się na „teraz”? Tak jest w timeshicie
+     (patrz timeshiftBack) i wtedy, gdy otworzyliśmy program, który wciąż leci —
+     w obu wypadkach „do przodu” na końcu okna znaczy „na żywo”. */
+  function atLiveEdge() {
+    var program = state.watchProgram;
+    if (!program) return false;
+    return !!program.timeshift || program.end > Date.now();
+  }
+
+  /* Przewijanie pilota (⏪/⏩): po nagraniu skaczemy o krok z ustawień, a gdy
+     w oknie kończącym się na „teraz” nie ma już czego przewijać — ⏩ wraca na
+     żywo, a ⏪ wczytuje dłuższe okno catch-up. Na samym kanale na żywo ⏪
+     wchodzi w catch-up, a ⏩ tylko przywołuje pasek z informacją. */
   function seekBy(direction) {
     var video = $("video");
-    if (!state.isArchive || !isFinite(video.duration)) return;
+    if (!video) return;
 
-    video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + direction * settings.seekSeconds));
+    var step = seekStep();
+
+    /* kanał na żywo: ⏪ wchodzi w catch-up o krok, ⏩ nie ma czego przewijać */
+    if (!state.isArchive) {
+      if (direction < 0) timeshiftBack();
+      else showOsd();
+      return;
+    }
+
+    /* nagranie, którego długości odtwarzacz nie zna — nie ma po czym skakać,
+       zostaje tylko zmiana okna: dłużej wstecz albo powrót na żywo */
+    if (!isFinite(video.duration)) {
+      if (atLiveEdge()) {
+        if (direction < 0) timeshiftBack();
+        else goLive();
+      } else {
+        showOsd();
+      }
+      return;
+    }
+
+    /* koniec okna programu, który wciąż leci = powrót na żywo */
+    if (direction > 0 && atLiveEdge() && video.currentTime + step >= video.duration - 0.5) {
+      goLive();
+      return;
+    }
+
+    /* za mało miejsca na pełny krok w tył = sięgnij po dłuższe okno catch-up */
+    if (direction < 0 && atLiveEdge() && video.currentTime < step) {
+      timeshiftBack();
+      return;
+    }
+
+    video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + direction * step));
     $("playerProgress").style.width = (video.currentTime / video.duration) * 100 + "%";
     $("playerTime").textContent = formatTime(video.currentTime) + " / " + formatTime(video.duration);
+    showSeekOverlay();
+  }
+
+  /* pasek z czasem na chwilę po skoku — jak przy przewijaniu nagrania */
+  function showSeekOverlay() {
     $("playerOverlay").classList.remove("hidden");
     clearTimeout(overlayTimer);
     overlayTimer = setTimeout(function () {
       $("playerOverlay").classList.add("hidden");
     }, 1800);
+  }
+
+  /* ⏪ na kanale na żywo (i cofanie dalej w tył): strumienia na żywo nie da się
+     przewinąć, więc wchodzimy w catch-up okna kończącego się TERAZ — odtwarzanie
+     startuje w punkcie „teraz − krok”. Okno kończy się na chwili włączenia, więc
+     jego długość to nasze opóźnienie; kolejne ⏪ na początku okna wydłużają je
+     wstecz, dzięki czemu cofać można się dowolnie daleko — na miarę archiwum
+     dostawcy. ⏩ na końcu takiego okna wraca na żywo (patrz atLiveEdge). */
+  function timeshiftBack() {
+    var channel = state.watchChannel;
+    if (!channel) return;
+
+    if (!hasArchive(channel)) {
+      showPlayerError(t("err_catchup"));
+      scheduleOsdHide();
+      return;
+    }
+
+    var video = $("video");
+    var behind = state.isArchive && video && isFinite(video.duration)
+      ? Math.ceil(video.duration)
+      : 0;
+    var now = Date.now();
+    var program = currentProgram(channel);
+
+    playChannel(channel, {
+      start: now - (behind + seekStep()) * 1000,
+      end: now,
+      title: program ? program.title : channel.name,
+      timeshift: true
+    }, "playerScreen");
   }
 
   function formatTime(seconds) {
@@ -3543,7 +3631,9 @@
         scheduleOsdHide();
         return;
       }
-      /* przewijanie: ⏪/⏩ (webOS 412/417), Android 89/90, ◀ ▶ w archiwum */
+      /* przewijanie: ⏪/⏩ (webOS 412/417), Android 89/90, ◀ ▶ w archiwum;
+         na kanale na żywo ⏪ wchodzi w catch-up o krok, a ⏩ na końcu okna
+         (program, który wciąż leci) wraca na żywo */
       if (key === 412 || key === 89 || ((key === 37) && settings.dpadSeek)) {
         event.preventDefault();
         seekBy(-1);
@@ -3590,8 +3680,27 @@
       return;
     }
 
-    var tag = document.activeElement && document.activeElement.tagName;
-    if ((tag === "INPUT" || tag === "SELECT") && key !== 13) return;
+    /* Pola formularza obsługuje sam WebView: klawisz OK musi na nich zostać
+       „przepuszczony” do przeglądarki, bo tylko wtedy rozwinie się lista wyboru
+       (select), otworzy się kalendarz albo zegar (date, time) i klawiatura.
+       Wcześniej preventDefault z sekcji OK poniżej zjadał ten klawisz i np. na
+       Fire TV nie dało się rozwinąć pola „Typ źródła”. Zaznaczenia przełączamy
+       sami, bo Enter na polu wyboru nie działa jednakowo na wszystkich
+       platformach, a strzałki zostawiamy polu (lista, kursor). */
+    var field = document.activeElement;
+    var fieldTag = (field && field.tagName) || "";
+
+    if (fieldTag === "SELECT" || fieldTag === "TEXTAREA") return;
+
+    if (fieldTag === "INPUT") {
+      var fieldType = (field.getAttribute("type") || "text").toLowerCase();
+      if ((fieldType === "checkbox" || fieldType === "radio") &&
+          (key === 13 || key === 23 || key === 66)) {
+        event.preventDefault();
+        if (!event.repeat && field.click) field.click();
+      }
+      return;
+    }
 
     /* Program TV: ◀ ▶ przewijają oś czasu o godzinę (dowolnie daleko w obie
        strony); przy polach daty/godziny strzałki obsługuje sam formularz */
