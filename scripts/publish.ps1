@@ -27,11 +27,20 @@ if (-not $Message) { $Message = $env:npm_config_message }
 if (-not $Tag -and $env:npm_config_tag) { $Tag = $env:npm_config_tag }
 if ($env:npm_config_release -eq "true") { $Release = $true }
 if (-not $Notes -and $env:npm_config_notes) { $Notes = $env:npm_config_notes }
+
+# npm zjada argumenty zaczynajace sie od "-" (np. "-Tag v1.21.0" interpretuje
+# jako wlasna flage) i zamiast tagu potrafi podstawic "true". Tag musi wygladac
+# jak wersja - inaczej przerywamy, zanim powstanie tag/release o zlej nazwie.
+if ($Tag -and $Tag -notmatch '^v?\d+\.\d+\.\d+$') {
+    throw ("Tag '$Tag' nie wyglada jak wersja (vX.Y.Z). Przez npm puszczaj z separatorem: " +
+           'npm run publish -- -Message "..." -Tag vX.Y.Z -Release')
+}
+
 if (-not $Message) {
-    throw 'Podaj tresc commita: -Message "..." albo npm run publish --message="..."'
+    throw 'Podaj tresc commita: -Message "..." albo npm run publish -- -Message "..."'
 }
 if ($Release -and -not $Tag) {
-    throw 'Wydanie wymaga tagu: -Tag vX.Y.Z (np. npm run publish --message="wersja X.Y.Z" -Tag vX.Y.Z -Release)'
+    throw 'Wydanie wymaga tagu: -Tag vX.Y.Z (np. npm run publish -- -Message "wersja X.Y.Z" -Tag vX.Y.Z -Release)'
 }
 
 $ErrorActionPreference = "Stop"

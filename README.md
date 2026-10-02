@@ -158,10 +158,12 @@ GitHubie jako „co nowego”) wycina z `CHANGELOG.md` generator
 bez zmian z poprzednich wydań. Kolejne wydanie tworzy `scripts/publish.ps1`
 z przełącznikiem `-Release`: robi commit, buduje paczki (`npm run build:all`),
 sam generuje opis i tworzy wydanie tylko z tymi plikami — brak gotowej paczki
-przerywa publikację:
+przerywa publikację. Uwaga: przez npm argumenty podaje się po separatorze `--`,
+bo inaczej npm „zjada” `-Tag` / `-Release` jako swoje flagi (skrypt to wychwytuje
+i odmawia, gdy tag nie wygląda jak `vX.Y.Z`):
 
 ```powershell
-npm run publish --message="wersja 1.19.0" -Tag v1.19.0 -Release
+npm run publish -- -Message "wersja 1.19.0" -Tag v1.19.0 -Release
 # własny opis wydania zamiast z CHANGELOG.md: dodatkowo -Notes C:\sciezka\opis.md
 ```
 
