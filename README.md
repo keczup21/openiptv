@@ -103,6 +103,11 @@ położony na kanałach.
 
 ## Plik M3U i EPG z pamięci
 
+Rodzaj źródła wybiera się w **Ustawieniach**, przyciskami **Link do M3U**,
+**Plik M3U** i **Xtream (login)** — wszystkie pozycje widać naraz, a wybrana
+jest podświetlona kolorem. Rozwijana lista systemowa odpadała, bo na telewizorze
+rysowała się ciemno na ciemnym i nie było widać, co jest zaznaczone.
+
 Playlistę i program TV można też wskazać plikiem z pamięci urządzenia albo
 z karty USB — w **Ustawieniach**, przyciskami **„Wybierz plik M3U”** i
 **„Wybierz plik EPG”**. Na każdej platformie robi to coś innego:
@@ -152,11 +157,13 @@ sklonowaniu repozytorium — nic nie trzeba przygotowywać poza nim — i dokła
 ten plik ląduje w wydaniu na GitHubie razem z `.ipk`.
 
 Adres `.../releases/latest` zawsze prowadzi do najnowszego wydania, a numer
-wersji i pełna lista zmian są w `CHANGELOG.md`. Opis wydania (to, co widać na
-GitHubie jako „co nowego”) wycina z `CHANGELOG.md` generator
-`scripts/release-notes.js` (`npm run notes`) — tylko sekcję wydawanej wersji,
-bez zmian z poprzednich wydań. Kolejne wydanie tworzy `scripts/publish.ps1`
-z przełącznikiem `-Release`: robi commit, buduje paczki (`npm run build:all`),
+wersji i pełna lista zmian są w `CHANGELOG.md`. Wpis w changelogu jest krótki
+i dotyczy tylko funkcji aplikacji — tego, co widać na ekranie — bez testów
+i skryptów wydania. Opis wydania (to, co widać na GitHubie jako „co nowego”)
+wycina z `CHANGELOG.md` generator `scripts/release-notes.js` (`npm run notes`)
+— tylko sekcję wydawanej wersji, bez zmian z poprzednich wydań. Kolejne wydanie
+tworzy `scripts/publish.ps1` z przełącznikiem `-Release`: robi commit, buduje
+paczki (`npm run build:all`),
 sam generuje opis i tworzy wydanie tylko z tymi plikami — brak gotowej paczki
 przerywa publikację. Uwaga: przez npm argumenty podaje się po separatorze `--`,
 bo inaczej npm „zjada” `-Tag` / `-Release` jako swoje flagi (skrypt to wychwytuje

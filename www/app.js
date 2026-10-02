@@ -21,7 +21,7 @@
      był natychmiastowy i nie przepisywał za każdym razem megabajtów danych. */
   var BLOBS_KEY = "openiptvBlobs";
   var BLOB_FIELDS = ["playlistFileText", "epgFileText", "playlistFileName", "epgFileName"];
-  var APP_VERSION = "1.21.1";
+  var APP_VERSION = "1.21.2";
   var SCHEMA_VERSION = 4;
 
   /* „Ostatnio oglądane”: kanał trafia na listę po 10 s oglądania,
@@ -1026,6 +1026,81 @@
     suppressProfileSelect = false;
   }
 
+  /* ---------- pola z listą wyboru widoczne w całości ---------------------- */
+  /* Rozwinięte menu systemowe (<select>) na dekoderach TV bywa ciemne na
+     ciemnym i nie widać, która pozycja jest podświetlona. Pole, na którym wybór
+     ma być jednoznaczny („Typ źródła”), rysujemy więc jako rząd przycisków:
+     wszystkie pozycje widać naraz, a wybrana jest w kolorze akcentu. Ukryty
+     <select> zostaje w formularzu jako miejsce, z którego wartość czytają
+     pozostałe funkcje (`$("sourceType").value`), więc zmienia się tylko wygląd.
+     Znacznik w index.html: <div class="choice-row" data-choice-for="sourceType">. */
+
+  /* zdarzenie „change” takie, jak z prawdziwej listy: kod podłączony do
+     <select> (pokazywanie pól Xtream, skok do pola adresu) działa bez zmian */
+  function fireChange(element) {
+    var event;
+    try {
+      event = new Event("change", { bubbles: true });
+    } catch (error) {
+      event = document.createEvent("HTMLEvents");
+      event.initEvent("change", true, false);
+    }
+    element.dispatchEvent(event);
+  }
+
+  function syncChoiceRow(row) {
+    var select = $(row.getAttribute("data-choice-for"));
+    if (!select) return;
+    var buttons = row.querySelectorAll("button");
+    for (var i = 0; i < buttons.length; i++) {
+      var on = buttons[i].getAttribute("data-value") === select.value;
+      buttons[i].setAttribute("aria-checked", on ? "true" : "false");
+    }
+  }
+
+  function syncChoiceRows() {
+    var rows = document.querySelectorAll("[data-choice-for]");
+    for (var i = 0; i < rows.length; i++) syncChoiceRow(rows[i]);
+  }
+
+  function pickChoice(button) {
+    var row = button.parentNode;
+    var select = $(row.getAttribute("data-choice-for"));
+    if (!select) return;
+    var chosen = button.getAttribute("data-value");
+    var changed = select.value !== chosen;
+    if (changed) select.value = chosen;
+    syncChoiceRow(row);
+    if (changed) fireChange(select);
+  }
+
+  function buildChoiceRow(row) {
+    var select = $(row.getAttribute("data-choice-for"));
+    if (!select || !select.options) return;
+    row.textContent = "";
+    for (var i = 0; i < select.options.length; i++) {
+      var option = select.options[i];
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "choice";
+      button.tabIndex = 0;
+      button.setAttribute("role", "radio");
+      button.setAttribute("data-value", option.value);
+      /* napis pozycji przechodzi przez tłumaczenia tak samo jak <option> */
+      var key = option.getAttribute("data-i18n");
+      if (key) button.setAttribute("data-i18n", key);
+      button.textContent = option.textContent;
+      button.onclick = function () { pickChoice(this); };
+      row.appendChild(button);
+    }
+    syncChoiceRow(row);
+  }
+
+  function buildChoiceRows() {
+    var rows = document.querySelectorAll("[data-choice-for]");
+    for (var i = 0; i < rows.length; i++) buildChoiceRow(rows[i]);
+  }
+
   function loadProfileIntoForm(profile) {
     draft.editingId = profile ? profile.id : newProfileId();
     draft.playlistText = (profile && profile.playlistFileText) || "";
@@ -1042,6 +1117,8 @@
     $("epgUrl").value = (profile && profile.epgUrl) || "";
 
     updateSourceSections();
+    /* lista wyboru pokazuje wartość wczytaną z profilu */
+    syncChoiceRows();
     updatePlaylistPicker();
     updateEpgPicker();
   }
@@ -4924,6 +5001,7 @@
 
   applyTheme();
   applyTranslations();
+  buildChoiceRows();
   applyUiMode();
 
   var versionEl = $("appVersion");

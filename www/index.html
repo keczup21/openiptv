@@ -29,13 +29,16 @@
       </div>
       <label><span data-i18n="profile_name">Nazwa profilu</span><input id="profileName" tabindex="0" type="text" placeholder="np. Domowa TV"></label>
       <h2 data-i18n="sources">ŹRÓDŁA</h2>
-      <label class="row-label"><span data-i18n="source_type">Typ źródła</span>
-        <select id="sourceType" tabindex="0">
+      <div class="row-label"><span id="sourceTypeLabel" data-i18n="source_type">Typ źródła</span>
+        <!-- wartość trzyma ukryty <select> (czytają ją pozostałe funkcje),
+             a na ekranie jest rząd przycisków — patrz buildChoiceRow() -->
+        <select id="sourceType" class="choice-value" tabindex="0">
           <option value="m3u-url" data-i18n="m3u_url">Link do M3U</option>
           <option value="m3u-file" data-i18n="m3u_file">Plik M3U</option>
           <option value="xtream" data-i18n="xtream">Xtream (login)</option>
         </select>
-      </label>
+      </div>
+      <div id="sourceTypeChoice" class="choice-row" data-choice-for="sourceType" role="radiogroup" aria-labelledby="sourceTypeLabel"></div>
       <div id="m3uUrlSection">
         <label><span data-i18n="playlist_url">Adres playlisty M3U</span><input id="playlistUrl" tabindex="0" type="url" placeholder="https://…/playlist.m3u"></label>
       </div>
@@ -175,7 +178,7 @@
         <select id="profileSwitcher" tabindex="0"></select>
         <button id="openGuide" tabindex="0" class="labeled-button" title="Program TV (EPG)" data-i18n-title="guide_title"><svg class="icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="17" rx="2"/><path d="M16 2.5v4M8 2.5v4M3 10.5h18"/></svg><span>EPG</span></button>
         <button id="reload" tabindex="0" class="icon-button" title="Odśwież" data-i18n-title="refresh"><svg class="icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.71"/><path d="M21 3v6h-6"/></svg></button>
-        <button id="openSettings" tabindex="0" class="labeled-button" title="Ustawienia" data-i18n-title="settings"><svg class="icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span data-i18n="settings">Ustawienia</span></button>
+        <button id="openSettings" tabindex="0" class="icon-button" title="Ustawienia" data-i18n-title="settings"><svg class="icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
       </nav>
     </header>
     <section class="browser-grid">

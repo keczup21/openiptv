@@ -1,6 +1,6 @@
 {
   "name": "openiptv",
-  "version": "1.21.1",
+  "version": "1.21.2",
   "private": true,
   "description": "OpenIPTV - one web codebase, two builds: webOS (.ipk) and Android / Fire TV (.apk).",
   "engines": {

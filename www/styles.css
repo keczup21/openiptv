@@ -91,6 +91,12 @@ button, input, select {
 
 button { padding: 13px 22px; cursor: pointer; }
 
+/* Pozycje rozwiniętej listy (<option>): własne tło i kolor, bo systemowe menu
+   na telewizorze rysuje się ciemno na ciemnym i nie widać zaznaczenia. Pole,
+   na którym wybór musi być widoczny od razu, nie używa listy rozwijanej wcale
+   (patrz .choice-row). */
+select option { background: var(--field-bg); color: var(--text); }
+
 button:focus, input:focus, select:focus, [tabindex="0"]:focus {
   border-color: var(--accent);
   background: var(--surface-2);
@@ -424,6 +430,21 @@ aside {
 .settings-card .hint { margin: -4px 0 18px; color: var(--faint); font-size: 16px; }
 .row-label { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .row-label select { width: 240px !important; }
+
+/* Pole z listą wyboru, które rysujemy sami (patrz buildChoiceRow() w app.js):
+   widać wszystkie pozycje naraz, a wybrana jest w kolorze akcentu — na
+   telewizorze nie da się tego przegapić. Ukryty <select> trzyma wartość dla
+   reszty kodu, więc nic poza wyglądem się nie zmienia. */
+.settings-card select.choice-value { display: none; }
+.choice-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 7px 0 16px; }
+.choice-row button { font-size: 18px; color: var(--muted); background: var(--surface-2); border: 2px solid var(--border); }
+.choice-row button[aria-checked="true"] {
+  color: #fff;
+  background: var(--grad);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+body.uimode-tv .choice-row button { font-size: 24px; }
 .check-row { display: flex; align-items: center; gap: 12px; font-size: 18px; }
 .check-row input { width: 24px; height: 24px; }
 .file-source { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }

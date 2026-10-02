@@ -9,42 +9,41 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/), wersje wg [Sem
 `www/appinfo.json`, `package.json`, `android/app/build.gradle`) podbija jedna
 komenda: `npm run bump -- X.Y.Z`.
 
-**Jak piszemy wpisy:** wpis opisuje wyłącznie to, co zmieniło się w swoim
-wydaniu — bez powtarzania zmian z wcześniejszych wersji i bez odnotowywania
-samego podbicia numeru (miejsca z numerem opisuje akapit wyżej). Opis wydania na
-GitHubie powstaje z tego wpisu: `npm run notes` (`scripts/release-notes.js`)
-bierze z changeloga tylko sekcję wydawanej wersji.
+**Jak piszemy wpisy:** wpis jest krótki i mówi tylko o tym, co zmieniło się
+w aplikacji, czyli o funkcjach i poprawkach widocznych na ekranie. Nie opisujemy
+w nim testów, skryptów wydania ani porządków w kodzie, nie powtarzamy zmian
+z wcześniejszych wersji i nie odnotowujemy samego podbicia numeru (miejsca
+z numerem opisuje akapit wyżej). Opis wydania na GitHubie powstaje z tego wpisu:
+`npm run notes` (`scripts/release-notes.js`) bierze z changeloga tylko sekcję
+wydawanej wersji.
+
+## [1.21.2] — 2026-10-03
+
+### Zmieniono
+- **„Typ źródła” widać od razu, bez rozwijanego menu.** Systemowa lista
+  rozwijana na telewizorze rysowała się ciemno na ciemnym i nie było widać,
+  która pozycja jest podświetlona. Wszystkie pozycje (Link do M3U, Plik M3U,
+  Xtream) stoją teraz obok siebie jako przyciski, a wybrana jest podświetlona
+  kolorem akcentu.
+- **Pozycje pozostałych list rozwijanych** (motyw, język, odświeżanie EPG,
+  archiwum) mają ciemne tło i jasny tekst, więc zaznaczenie też jest widoczne.
+- **Przycisk ustawień w nagłówku to sama zębatka** — napis „Ustawienia” został
+  w podpowiedzi przycisku, tak jak dotąd.
 
 ## [1.21.1] — 2026-10-03
 
 ### Naprawiono
-- **Fokus nie ucieka na początek ustawień po naciśnięciu „Pobierz i zainstaluj”.**
-  W trakcie pobierania paczki oba przyciski sekcji AKTUALIZACJE dostawały
-  `disabled`, a wyłączony przycisk oddaje fokus ciału strony — pierwsze
-  naciśnięcie strzałki startowało więc od pierwszego pola formularza i nie było
-  jak zjechać do opisu zmian ani do „Zapisz i pobierz”. Teraz są tylko przygaszone
-  (klasa `.busy` w `www/styles.css`, `setButtonBusy()` w `www/app.js`), zostają w
-  nawigacji pilotem, a przed drugim wywołaniem nadal chroni `updateState.busy`.
-- **Ekran dosuwa się o brakujący kawałek, a nie do samej krawędzi.** Nawigacja
-  pilotem kończyła się `scrollIntoView(false)`, czyli wyrównaniem przycisku do
-  dolnej krawędzi: przewijanie szło „po schodkach”, a po dojechaniu na „Pobierz i
-  zainstaluj” wszystko pod nim — stan pobierania, ostatnie zmiany i przyciski na
-  dole ustawień — lądowało poza ekranem. `keepInView()` (nowe w `www/app.js`)
-  przesuwa ekran tylko wtedy, gdy element nie mieści się w zapasie (25% wysokości,
-  maks. 200 px), i tylko o brakujący kawałek, więc pod sfokusowanym przyciskiem
-  widać sąsiednie wiersze. Element już widoczny nie rusza ekranu wcale.
-- **Zgubiony fokus liczy od miejsca, w którym był.** Gdy przycisk zniknie albo
-  przestanie być dostępny, przeglądarka przenosi fokus na ciało strony i nawigacja
-  wracała na początek ekranu. Ostatnie miejsce fokusu pamięta teraz `focusin`
-  (`focusAnchor` w `www/app.js`), więc strzałka idzie dalej od tego miejsca, a nie
-  od góry ustawień.
-
-### Zmieniono
-- **Testy pilnują przewijania i przycisków aktualizacji.** `npm run test:nav`
-  sprawdza `keepInView()` na atrapie ekranu (zapas pod elementem, brak skoku dla
-  wiersza widocznego z zapasem, powrót z zapasem od górnej krawędzi, kontener bez
-  przewijania, brak wywrotki na atrapie elementu) oraz to, że przyciski sekcji
-  AKTUALIZACJE nie używają już `disabled`, a fokus jest zapamiętywany.
+- **Fokus nie ucieka już na początek ustawień po naciśnięciu „Pobierz i
+  zainstaluj”.** Oba przyciski sekcji AKTUALIZACJE były w trakcie pobierania
+  wyłączane, a wyłączony przycisk oddaje fokus początkowi ekranu — nie było jak
+  zjechać do opisu zmian ani do „Zapisz i pobierz”. Teraz są tylko przygaszone.
+- **Ekran przesuwa się o brakujący kawałek, a nie do samej krawędzi.** Jazda
+  pilotem po ustawieniach szła „po schodkach”, a wszystko pod przyciskiem
+  aktualizacji — stan pobierania, ostatnie zmiany, przyciski na dole ustawień —
+  lądowało poza ekranem. Pod sfokusowanym elementem widać teraz sąsiednie
+  wiersze, a to, co już jest widoczne, nie rusza ekranu wcale.
+- **Zgubiony fokus liczy od miejsca, w którym był.** Gdy element zniknie
+  z ekranu, strzałka idzie dalej od ostatniego miejsca, a nie od góry ustawień.
 
 ## [1.21.0] — 2026-10-03
 

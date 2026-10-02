@@ -339,9 +339,13 @@ function tag(id) {
 const guideBtn = tag("openGuide");
 check("przycisk EPG ma ikone kalendarza i napis (nie sam znak)",
   guideBtn.indexOf("<svg") > 0 && guideBtn.indexOf(">EPG<") > 0, guideBtn.slice(0, 60));
-check("przycisk ustawien ma zebatke i napis „Ustawienia”",
+check("przycisk ustawien to sama zebatka (napis zostal w podpowiedzi)",
+  tag("openSettings").indexOf('class="icon-button"') > 0 &&
   tag("openSettings").indexOf("<svg") > 0 &&
-  tag("openSettings").indexOf('data-i18n="settings"') > 0);
+  tag("openSettings").indexOf('data-i18n-title="settings"') > 0 &&
+  tag("openSettings").indexOf("<span") < 0);
+check("napis „Ustawienia” zostaje tam, gdzie jest potrzebny (naglowek ekranu)",
+  html.indexOf('<h1 data-i18n="settings">') > 0);
 check("odswiezanie zostaje przyciskiem z sama ikona",
   tag("reload").indexOf('class="icon-button"') > 0 && tag("reload").indexOf("<svg") > 0);
 check("ikony naglowka nie sa emoji (zadnego znaku emoji w przyciskach)",
@@ -488,6 +492,152 @@ check("app.js pamieta ostatnie miejsce fokusu (focusin)",
   src.indexOf('document.addEventListener("focusin"') > 0);
 check("CSS przygasza przycisk w trakcie pobierania",
   /\.update-row button\.busy\s*\{[^}]*opacity/.test(css));
+
+/* --- 13. pole z listą wyboru („Typ źródła”) ------------------------------
+   Rozwinięte menu systemowe (<select>) na telewizorze bywa ciemne na ciemnym
+   i nie było widać, która pozycja jest podświetlona. Pole jest teraz rzędem
+   przycisków — wszystkie pozycje widoczne naraz, wybrana w kolorze akcentu —
+   a ukryty <select> trzyma wartość, którą czytają pozostałe funkcje. */
+const choiceStart = src.indexOf("function fireChange(");
+const choiceEnd = src.indexOf("function loadProfileIntoForm(");
+if (choiceStart < 0 || choiceEnd < 0 || choiceEnd <= choiceStart) {
+  throw new Error("Nie znalazlem bloku list wyboru w app.js");
+}
+const codeChoice = src.slice(choiceStart, choiceEnd);
+["fireChange", "syncChoiceRow", "syncChoiceRows", "pickChoice", "buildChoiceRow", "buildChoiceRows"]
+  .forEach(function (fn) {
+    if (codeChoice.indexOf("function " + fn) < 0) {
+      throw new Error("Wyciety blok list wyboru nie ma " + fn);
+    }
+  });
+
+/* atrapa pola: wiersz z przyciskami + <select>, ktory trzyma wartosc */
+function choiceHarness(withoutEvent) {
+  const buttons = [];
+  const row = {
+    attrs: { "data-choice-for": "sourceType" },
+    getAttribute: function (name) { return this.attrs[name] === undefined ? null : this.attrs[name]; },
+    querySelectorAll: function () { return buttons; },
+    appendChild: function (child) { child.parentNode = this; buttons.push(child); }
+  };
+  /* w przegladarce ustawienie textContent kasuje dotychczasowe dzieci */
+  Object.defineProperty(row, "textContent", { set: function () { buttons.length = 0; } });
+
+  function option(value, key, text) {
+    const attrs = { "data-i18n": key };
+    return {
+      value: value,
+      textContent: text,
+      getAttribute: function (name) { return attrs[name] === undefined ? null : attrs[name]; }
+    };
+  }
+
+  const select = {
+    value: "m3u-url",
+    options: [option("m3u-url", "m3u_url", "Link do M3U"),
+      option("m3u-file", "m3u_file", "Plik M3U"),
+      option("xtream", "xtream", "Xtream (login)")],
+    events: [],
+    onchange: null,
+    dispatchEvent: function (event) {
+      this.events.push(event);
+      if (this.onchange) this.onchange(event);
+    }
+  };
+
+  const sandbox = {
+    document: {
+      createElement: function () {
+        const attrs = {};
+        return {
+          tabIndex: -1,
+          className: "",
+          textContent: "",
+          parentNode: null,
+          setAttribute: function (name, value) { attrs[name] = String(value); },
+          getAttribute: function (name) { return attrs[name] === undefined ? null : attrs[name]; }
+        };
+      },
+      /* droga zapasowa dla starszych WebView (bez konstruktora Event) */
+      createEvent: function (kind) {
+        return { kind: kind, initEvent: function (type) { this.type = type; } };
+      },
+      querySelectorAll: function () { return [row]; }
+    },
+    $: function (id) { return id === "sourceType" ? select : null; }
+  };
+  if (!withoutEvent) sandbox.Event = function (type) { this.type = type; };
+
+  run(codeChoice, sandbox);
+  return { api: sandbox, row: row, select: select, buttons: buttons };
+}
+
+(function () {
+  const h = choiceHarness();
+  h.api.buildChoiceRows();
+  const texts = h.buttons.map(function (b) { return b.textContent; });
+  check("kazda pozycja listy ma swoj przycisk — wszystkie widoczne naraz",
+    h.buttons.length === 3 && texts.join(" | ") === "Link do M3U | Plik M3U | Xtream (login)",
+    texts.join(" | "));
+  check("wybor widac niezaleznie od fokusu (aria-checked, rola radio, tabindex)",
+    h.buttons[0].getAttribute("aria-checked") === "true" &&
+    h.buttons[1].getAttribute("aria-checked") === "false" &&
+    h.buttons[2].getAttribute("aria-checked") === "false" &&
+    h.buttons[0].getAttribute("role") === "radio" && h.buttons[0].tabIndex === 0);
+  check("napisy pozycji nadal ida przez tlumaczenia (data-i18n z <option>)",
+    h.buttons[0].getAttribute("data-i18n") === "m3u_url" &&
+    h.buttons[1].getAttribute("data-i18n") === "m3u_file" &&
+    h.buttons[2].getAttribute("data-i18n") === "xtream");
+})();
+
+(function () {
+  const h = choiceHarness();
+  h.api.buildChoiceRows();
+  let changes = 0;
+  h.select.onchange = function () { changes++; };
+
+  h.buttons[1].onclick.call(h.buttons[1]);
+  check("wybor z listy zapisuje wartosc w <select> (czytaja ja pozostale funkcje)",
+    h.select.value === "m3u-file", h.select.value);
+  check("wybor z listy wysyla zdarzenie „change” (pola Xtream sie przelaczaja)",
+    changes === 1 && h.select.events.length === 1 && h.select.events[0].type === "change",
+    "zmian: " + changes + ", zdarzen: " + h.select.events.length);
+  check("zaznaczenie idzie za wyborem",
+    h.buttons[1].getAttribute("aria-checked") === "true" &&
+    h.buttons[0].getAttribute("aria-checked") === "false");
+
+  h.buttons[1].onclick.call(h.buttons[1]);
+  check("wybranie tej samej pozycji nic nie zmienia (bez zdarzenia, bez skoku fokusu)",
+    changes === 1, "zmian: " + changes);
+
+  h.select.value = "xtream"; /* tak wartosc z profilu ustawia loadProfileIntoForm */
+  h.api.syncChoiceRows();
+  check("wartosc wczytana z profilu tez jest zaznaczona",
+    h.buttons[2].getAttribute("aria-checked") === "true" &&
+    h.buttons[0].getAttribute("aria-checked") === "false");
+})();
+
+(function () {
+  const h = choiceHarness(true); /* starszy WebView: bez konstruktora Event */
+  h.api.buildChoiceRows();
+  let changes = 0;
+  h.select.onchange = function () { changes++; };
+  h.buttons[2].onclick.call(h.buttons[2]);
+  check("na starszym WebView zdarzenie „change” idzie droga zapasowa (createEvent)",
+    changes === 1 && h.select.events[0].type === "change", "zmian: " + changes);
+})();
+
+check("pole z lista wyboru nie rozwija systemowego menu (ukryty <select> + rzad przyciskow)",
+  html.indexOf('id="sourceType" class="choice-value"') > 0 &&
+  html.indexOf('data-choice-for="sourceType"') > 0 &&
+  /\.settings-card select\.choice-value\s*\{\s*display:\s*none/.test(css));
+check("wybrana pozycja jest widoczna od razu (tlo akcentu, nie tylko obwodka fokusu)",
+  /\.choice-row button\[aria-checked="true"\]\s*\{[^}]*background:\s*var\(--grad\)/.test(css));
+check("lista wyboru jest wieksza na telewizorze", css.indexOf("body.uimode-tv .choice-row button") > 0);
+check("pozostale listy (<option>) maja wlasne tlo, a nie systemowe",
+  /select option\s*\{[^}]*background/.test(css));
+check("lista wyboru powstaje przy starcie, a wartosc z profilu ja odswieza",
+  src.indexOf("\n  buildChoiceRows();") > 0 && src.indexOf("\n    syncChoiceRows();") > 0);
 
 console.log("");
 if (fails) { console.log("BLEDY: " + fails); process.exit(1); }
