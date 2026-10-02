@@ -17,8 +17,30 @@ Odtwarzacz M3U z EPG/XMLTV i obsługą paneli Xtream Codes:
 - ulubione, ostatnio oglądane, wyszukiwarka, profile źródeł,
 - interfejs po polsku i angielsku, motyw jasny i ciemny, tryb TV z obsługą
   pilota oraz wspólna obsługa klawisza Wstecz,
+- rozmiar interfejsu dobierany do rozdzielczości ekranu (720p / 1080p / 4K)
+  albo wybierany ręcznie w 100–150% — dla czytelności z dużej odległości,
 - aktualizacja bez przymusu: ustawienia tylko pokazują, że jest nowsza wersja
   i krótko co się zmieniło, a aktualizację uruchamia przycisk.
+
+## Rozmiar interfejsu
+
+Projekt układu ma 1920 px szerokości, a przeglądarka telewizora skaluje go do
+ekranu — dzięki temu ten sam kod obsługuje 720p, 1080p i 4K. Żeby litery były
+czytelne z kanapy, aplikacja wykrywa rozdzielczość ekranu (px CSS ekranu ×
+gęstość) i sama dobiera wielkość układu (`www/ui-scale.js`):
+
+| Ekran | Skala automatyczna | Układ |
+|---|---|---|
+| 720p i mniejsze | 140% | 1371 px |
+| 1080p | 100% | 1920 px |
+| 4K | 100% | 1920 px |
+
+W **Ustawieniach** jest lista **Rozmiar interfejsu** — Automatyczny, 100%, 115%,
+130% i 150% — a pod nią informacja, co aplikacja wykryła (np. „Wykryty ekran:
+1920×1080 px, gęstość 2.0× — układ 1920 px, skala 100%”). Skala obowiązuje od
+razu: szerokość układu ustawia się jeszcze przed pierwszym rysowaniem strony,
+a gdy telewizor zmieni rozdzielczość w trakcie pracy, układ przelicza się sam.
+W przeglądarce na komputerze skalę robi zoom CSS.
 
 ## Pobieranie
 
@@ -75,7 +97,7 @@ dostać wpis w `CHANGELOG.md`.
 ```
 OpenIPTV/
 ├─ www/                     wspólny kod aplikacji (edytuj tylko tutaj)
-│  ├─ index.html app.js styles.css
+│  ├─ index.html app.js styles.css ui-scale.js
 │  ├─ epg-worker.js         parser XMLTV poza wątkiem UI (fallback: app.js)
 │  ├─ appinfo.json          manifest webOS
 │  ├─ icon.png icon.svg largeicon.png

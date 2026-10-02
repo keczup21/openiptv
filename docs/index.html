@@ -129,6 +129,10 @@
       <div class="card"><h3>Tryb TV i pilot</h3>
         <p>Nawigacja strzałkami, klawisz Wstecz obsłużony wspólnie na Androidzie
            i webOS, pasek OSD z nazwą kanału i programem.</p></div>
+      <div class="card"><h3>Czytelny na każdym ekranie</h3>
+        <p>Rozdzielczość ekranu wykrywana automatycznie: 720p dostaje układ
+           1371 px (o 40% większe litery), 1080p i 4K zostają przy projekcie
+           1920 px. W ustawieniach „Rozmiar interfejsu” można wybrać 100–150%.</p></div>
       <div class="card"><h3>PL / EN, jasny / ciemny</h3>
         <p>Interfejs po polsku i angielsku, dwa motywy, oraz obniżane obciążenie:
            EPG przycinane do widocznych wierszy, siatka rysowana stopniowo.</p></div>
@@ -174,8 +178,9 @@
     <div class="cols" style="margin-top:22px">
       <div class="card"><h3>www/ — wspólny kod</h3>
         <p><code>index.html</code>, <code>app.js</code>, <code>styles.css</code>,
-           <code>epg-worker.js</code> oraz leniwie dociągane <code>lib/</code>
-           (hls.js, mpegts.js, pako). Te same pliki obsługują oba systemy.</p></div>
+           <code>ui-scale.js</code>, <code>epg-worker.js</code> oraz leniwie
+           dociągane <code>lib/</code> (hls.js, mpegts.js, pako). Te same pliki
+           obsługują oba systemy.</p></div>
       <div class="card"><h3>webos-service/ — natywny fetch</h3>
         <p>Niewielki serwis Luna (<code>pl.openiptv.player.service.fetch</code>)
            pobiera playlistę i EPG z pominięciem limitów CORS przeglądarki TV.</p></div>

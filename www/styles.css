@@ -576,6 +576,12 @@ body.uimode-tv ::-webkit-scrollbar { width: 0 !important; height: 0 !important; 
 }
 body.uimode-tv .tv-keys-hint { display: block; font-size: 17px; }
 
+/* ekran telewizora układa się jak kolumna: nagłówek może się zawinąć przy
+   wąskim układzie (np. skala 150%), a lista kanałów zabiera resztę wysokości */
+body.uimode-tv #browserScreen { display: flex; flex-direction: column; }
+body.uimode-tv header { height: auto; min-height: 124px; flex: none; }
+body.uimode-tv .browser-grid { flex: 1; min-height: 0; height: auto; }
+
 /* ---------- TRYB DOTYKOWY: telefon / tablet ---------- */
 body.uimode-touch { font-size: 19px; }
 body.uimode-touch #browserScreen { display: flex; flex-direction: column; }
@@ -671,5 +677,17 @@ body.uimode-tv .ctx-actions button:focus {
 
 /* pasek postępu pobierania EPG w nagłówku */
 body.uimode-tv #status { font-variant-numeric: tabular-nums; }
+
+/* ==========================================================================
+   1.20.0 — rozmiar interfejsu: rozdzielczość ekranu → skala układu
+   (www/ui-scale.js). Szerokość układu ustawia „meta viewport” (albo zoom CSS
+   na komputerze), więc tutaj zostaje sama informacja o wykrytym ekranie.
+   ========================================================================== */
+
+#screenInfo {
+  margin: -8px 0 18px;
+  font-variant-numeric: tabular-nums;
+}
+body.uimode-tv #screenInfo { font-size: 17px; }
 
 

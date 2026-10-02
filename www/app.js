@@ -21,7 +21,7 @@
      był natychmiastowy i nie przepisywał za każdym razem megabajtów danych. */
   var BLOBS_KEY = "openiptvBlobs";
   var BLOB_FIELDS = ["playlistFileText", "epgFileText", "playlistFileName", "epgFileName"];
-  var APP_VERSION = "1.19.4";
+  var APP_VERSION = "1.20.0";
   var SCHEMA_VERSION = 4;
 
   /* „Ostatnio oglądane”: kanał trafia na listę po 10 s oglądania,
@@ -138,6 +138,7 @@
     language: "pl",
     theme: "dark",
     uiMode: "auto",
+    uiScale: "auto",
     osdEnabled: true,
     favorites: {},
     recentChannels: {},
@@ -212,6 +213,15 @@
     ui_mode_auto: "Automatyczny (TV / telefon)",
     ui_mode_tv: "Telewizor (pilot, 10 stóp)",
     ui_mode_touch: "Dotykowy (telefon / tablet)",
+    ui_scale: "Rozmiar interfejsu",
+    ui_scale_auto: "Automatyczny (wg rozdzielczości ekranu)",
+    ui_scale_100: "100%",
+    ui_scale_115: "115% — większe litery",
+    ui_scale_130: "130% — duże litery",
+    ui_scale_150: "150% — największe",
+    screen_info: "Wykryty ekran: {width}×{height} px, gęstość {dpr}× — układ {canvas} px, skala {scale}% ({source}).",
+    scale_source_auto: "automatyczna",
+    scale_source_manual: "ustawiona ręcznie",
     osd_enabled: "Mini-EPG na kanale (co teraz leci)",
     platform_line: "Wykryto: {name} • interfejs: {mode}",
     platform_firetv: "Fire TV", platform_androidtv: "Android TV", platform_webos: "webOS",
@@ -339,6 +349,15 @@
     ui_mode_auto: "Automatic (TV / phone)",
     ui_mode_tv: "TV (remote, 10-foot)",
     ui_mode_touch: "Touch (phone / tablet)",
+    ui_scale: "Interface size",
+    ui_scale_auto: "Automatic (by screen resolution)",
+    ui_scale_100: "100%",
+    ui_scale_115: "115% — larger text",
+    ui_scale_130: "130% — large text",
+    ui_scale_150: "150% — largest",
+    screen_info: "Detected screen: {width}×{height} px, density {dpr}× — layout {canvas} px, scale {scale}% ({source}).",
+    scale_source_auto: "automatic",
+    scale_source_manual: "set by hand",
     osd_enabled: "Mini-EPG on channel (what's on now)",
     platform_line: "Detected: {name} • interface: {mode}",
     platform_firetv: "Fire TV", platform_androidtv: "Android TV", platform_webos: "webOS",
@@ -518,6 +537,85 @@
         mode: t(mode === "tv" ? "mode_tv" : "mode_touch")
       });
     }
+    applyUiScale();
+  }
+
+  /* ---------- rozmiar interfejsu: rozdzielczość ekranu → skala układu ----------
+     Cała matematyka jest w www/ui-scale.js — ten sam kod ustawia szerokość
+     układu zaraz po wczytaniu index.html, więc interfejs nie pojawia się
+     najpierw w złym rozmiarze. Tutaj: ustawienie z formularza, informacja
+     o wykrytym ekranie i przeliczenie skali, gdy telewizor zmieni rozdzielczość
+     już w trakcie pracy (np. 720p → 1080p przy materiale 4K). */
+  function scaleApi() {
+    return window.OpenIPTVScale || null;
+  }
+
+  function scaleContext() {
+    var api = scaleApi();
+    if (api) return api.context(window);
+    return { tv: isTvMode(), mobile: false, native: false, viewport: false };
+  }
+
+  /* wartość z <select id="uiScale">: „auto” albo jedna z gotowych skal */
+  function normalizeUiScale(value) {
+    var api = scaleApi();
+    return api && api.isFactor(value) ? String(value) : "auto";
+  }
+
+  function uiScaleFactor(ctx) {
+    var api = scaleApi();
+    if (!api) return 1;
+    return api.factor(settings.uiScale, api.metrics(window), ctx || scaleContext());
+  }
+
+  function applyUiScale() {
+    var info = $("screenInfo");
+    var api = scaleApi();
+    if (!api) {
+      if (info) info.textContent = "";
+      return;
+    }
+    var ctx = scaleContext();
+    var factor = uiScaleFactor(ctx);
+    api.applyToPage(document, factor, ctx);
+    document.body.setAttribute("data-uiscale", String(Math.round(factor * 100)));
+    if (info) {
+      var m = api.metrics(window);
+      info.textContent = t("screen_info", {
+        width: m.physW,
+        height: m.physH,
+        dpr: m.dpr.toFixed(1),
+        canvas: api.canvasWidth(factor, ctx) || m.viewW,
+        scale: Math.round(factor * 100),
+        source: t(settings.uiScale === "auto" ? "scale_source_auto" : "scale_source_manual")
+      });
+    }
+    watchScreen();
+  }
+
+  var screenWatchTimer = null;
+  var screenWatchPhys = 0;
+
+  /* Ekran telewizora potrafi zmienić rozdzielczość już w trakcie pracy, a wtedy
+     sama zmienia się skala „automatyczna”. Sprawdzamy to co dwie sekundy, ale
+     przy skali wybranej ręcznie nie robimy nic. */
+  function watchScreen() {
+    var api = scaleApi();
+    if (!api || settings.uiScale !== "auto" || !isTvMode()) {
+      if (screenWatchTimer) {
+        window.clearInterval(screenWatchTimer);
+        screenWatchTimer = null;
+      }
+      return;
+    }
+    screenWatchPhys = api.metrics(window).physH;
+    if (screenWatchTimer) return;
+    screenWatchTimer = window.setInterval(function () {
+      var phys = scaleApi().metrics(window).physH;
+      if (phys === screenWatchPhys) return;
+      screenWatchPhys = phys;
+      applyUiScale();
+    }, 2000);
   }
 
   /* robocza kopia edytowanego profilu (pliki wybrane z dysku) */
@@ -722,6 +820,7 @@
     $("language").value = settings.language === "en" ? "en" : "pl";
     $("theme").value = settings.theme === "light" ? "light" : "dark";
     $("uiMode").value = settings.uiMode === "tv" || settings.uiMode === "touch" ? settings.uiMode : "auto";
+    $("uiScale").value = normalizeUiScale(settings.uiScale);
     $("osdEnabled").checked = settings.osdEnabled !== false;
     $("settingsError").textContent = "";
     resetUpdateStatus();
@@ -3835,6 +3934,7 @@
     settings.language = $("language").value === "en" ? "en" : "pl";
     settings.theme = $("theme").value === "light" ? "light" : "dark";
     settings.uiMode = $("uiMode").value === "tv" || $("uiMode").value === "touch" ? $("uiMode").value : "auto";
+    settings.uiScale = normalizeUiScale($("uiScale").value);
     settings.osdEnabled = $("osdEnabled").checked;
 
     /* Wielkie teksty (playlista/EPG wybrane z pliku) trzymamy w osobnym kluczu,
@@ -3870,6 +3970,8 @@
   $("language").onchange = function () {
     settings.language = this.value === "en" ? "en" : "pl";
     applyTranslations();
+    /* informacja o wykrytym ekranie ma liczby, więc tłumaczymy ją osobno */
+    applyUiScale();
   };
 
   $("theme").onchange = function () {
@@ -3882,6 +3984,31 @@
   $("uiMode").onchange = function () {
     settings.uiMode = this.value === "tv" || this.value === "touch" ? this.value : "auto";
     applyUiMode();
+  };
+
+  /* Rozmiar interfejsu też działa od razu. Szerokość układu zmieniamy w „meta
+     viewport”, a gdy przeglądarka nie przeliczy jej w locie (starsze WebView na
+     telewizorach), wczytujemy stronę raz jeszcze — index.html ustawia wtedy
+     szerokość przed pierwszym rysowaniem, więc nic nie mruga. */
+  $("uiScale").onchange = function () {
+    var value = normalizeUiScale(this.value);
+    settings.uiScale = value;
+    flushSettings();
+    applyUiScale();
+    var api = scaleApi();
+    if (!api) return;
+    var ctx = scaleContext();
+    var factor = uiScaleFactor(ctx);
+    window.setTimeout(function () {
+      if (!api.canvasMismatch(window, factor, ctx)) return;
+      try {
+        if (sessionStorage.getItem("openiptvScaleReload") === value) return;
+        sessionStorage.setItem("openiptvScaleReload", value);
+      } catch (e) {
+        return;
+      }
+      window.location.reload();
+    }, 500);
   };
 
   $("osdEnabled").onchange = function () {

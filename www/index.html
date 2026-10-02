@@ -2,21 +2,18 @@
 <html lang="pl">
 <head>
   <meta charset="utf-8">
-  <!-- Szerokość układu wybieramy przed pierwszym rysowaniem strony. Telewizory
-       (Fire TV, Android TV, webOS) mają gęstość 2.0, czyli okno 960x540 px CSS
-       zamiast 1920x1080, przez co ten sam projekt wyglądał na nich dwa razy za
-       duży. Stała szerokość 1920 px + tryb przeglądowy WebView (patrz
-       MainActivity.applyTvViewport) skalują projekt do szerokości ekranu.
-       Telefony i tablety dostają jak dotąd szerokość swojego ekranu. -->
+  <!-- Szerokość i rozmiar układu wybieramy jeszcze przed pierwszym rysowaniem
+       strony. Telewizory (Fire TV, Android TV, webOS) mają gęstość 2.0, czyli
+       okno 960x540 px CSS zamiast 1920x1080, dlatego układ ma stałą szerokość
+       1920 px, a tryb przeglądowy WebView (patrz MainActivity.applyTvViewport)
+       skaluje go do szerokości ekranu. Ile dokładnie wynosi ta szerokość, liczy
+       ui-scale.js w OpenIPTVScale.applyViewport(): z wykrytej rozdzielczości
+       ekranu (720p i mniejsze dostają węższy układ 1371 px, czyli wszystko
+       większe o 40%) oraz z ustawienia „Rozmiar interfejsu”. Telefony i tablety
+       dostają jak dotąd szerokość swojego ekranu. -->
+  <script src="ui-scale.js"></script>
   <script>
-    (function () {
-      var ua = (navigator.userAgent || "").toLowerCase();
-      var tv = /web0s|webos|netcast|smarttv|hbbtv|viera|bravia|firetv|fire tv|\baft[a-z0-9]{0,2}\b|android tv|leanback|shield|droidlogic/.test(ua);
-      var meta = document.createElement("meta");
-      meta.setAttribute("name", "viewport");
-      meta.setAttribute("content", tv ? "width=1920" : "width=device-width,initial-scale=1");
-      document.head.appendChild(meta);
-    })();
+    window.OpenIPTVScale.applyViewport();
   </script>
   <title>OpenIPTV</title>
   <link rel="stylesheet" href="styles.css">
@@ -117,6 +114,16 @@
           <option value="touch" data-i18n="ui_mode_touch">Dotykowy (telefon / tablet)</option>
         </select>
       </label>
+      <label class="row-label"><span data-i18n="ui_scale">Rozmiar interfejsu</span>
+        <select id="uiScale" tabindex="0">
+          <option value="auto" data-i18n="ui_scale_auto">Automatyczny (wg rozdzielczości)</option>
+          <option value="1" data-i18n="ui_scale_100">100%</option>
+          <option value="1.15" data-i18n="ui_scale_115">115%</option>
+          <option value="1.3" data-i18n="ui_scale_130">130%</option>
+          <option value="1.5" data-i18n="ui_scale_150">150%</option>
+        </select>
+      </label>
+      <p class="hint" id="screenInfo"></p>
       <label class="check-row"><input id="osdEnabled" tabindex="0" type="checkbox" checked><span data-i18n="osd_enabled">Mini-EPG na kanale (co teraz leci)</span></label>
       <p class="hint" id="platformInfo"></p>
       <h2 data-i18n="updates">AKTUALIZACJE</h2>

@@ -9,6 +9,31 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/), wersje wg [Sem
 `www/appinfo.json`, `package.json`, `android/app/build.gradle`) podbija jedna
 komenda: `npm run bump -- X.Y.Z`.
 
+## [1.20.0] — 2026-10-02
+
+### Dodano
+- **Rozmiar interfejsu dobierany do ekranu.** Aplikacja wykrywa rozdzielczość
+  ekranu (piksele fizyczne = rozmiar w px CSS × gęstość) i sama ustawia wielkość
+  interfejsu: na 1080p i 4K zostaje projekt 1920 px, a na 720p i mniejszych
+  układ zwęża się do 1371 px, dzięki czemu litery mają tyle samo pikseli ekranu,
+  co na 1080p (są o 40% większe). W ustawieniach doszła lista **Rozmiar
+  interfejsu**: Automatyczny, 100%, 115%, 130% i 150% — dla dużych odległości
+  i słabszego wzroku. Pod listą widać, co wykryto, np. „Wykryty ekran:
+  1920×1080 px, gęstość 2.0× — układ 1920 px, skala 100%”.
+- **Skala działa też w trakcie pracy.** Gdy telewizor zmieni rozdzielczość,
+  układ przelicza się sam. Wybrany rozmiar obowiązuje jeszcze przed pierwszym
+  rysowaniem strony (`www/ui-scale.js` czyta go z pamięci ustawień), więc nic
+  nie mruga; jeśli starszy WebView nie przełoży zmiany „meta viewport” na
+  układ, strona wczytuje się raz jeszcze. Na komputerze skalę robi zoom CSS.
+
+### Zmieniono
+- **Nagłówek przy wąskim układzie.** Przy skali 150% (układ 1280 px) przyciski
+  w nagłówku nie są już ucinane — ekran telewizora układa się kolumną, a lista
+  kanałów zabiera resztę wysokości.
+- **Wersje podbite w czterech miejscach**: `www/app.js` (`APP_VERSION`),
+  `www/appinfo.json`, `package.json` i `android/app/build.gradle`
+  (`versionName` + `versionCode 25`).
+
 ## [1.19.4] — 2026-10-02
 
 ### Naprawiono
