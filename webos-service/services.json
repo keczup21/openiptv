@@ -1,0 +1,16 @@
+{
+  "id": "pl.openiptv.player.service.fetch",
+  "description": "OpenIPTV native HTTP fetcher (bypasses CORS)",
+  "services": [
+    {
+      "name": "pl.openiptv.player.service.fetch",
+      "description": "OpenIPTV native HTTP fetcher (bypasses CORS)",
+      "engine": "node",
+      "executable": "main.js",
+      "commands": [
+        { "name": "fetch", "public": true },
+        { "name": "fetchBinary", "public": true }
+      ]
+    }
+  ]
+}

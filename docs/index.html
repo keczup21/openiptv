@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenIPTV — IPTV na LG webOS i Android TV</title>
+<meta name="description" content="OpenIPTV: jeden kod web, dwa wydania — .ipk na LG webOS i .apk na Android TV / Fire TV. M3U, EPG/XMLTV, catch-up, panel Xtream Codes, obsługa pilota.">
+<link rel="icon" href="assets/icon.svg">
+<style>
+  :root{
+    --bg:#0b1020; --card:#151d38; --card2:#1b2447; --line:#27315c;
+    --fg:#e9edf9; --muted:#9aa6c9; --accent:#4f8cff; --accent2:#22d3a6;
+    --radius:16px; --shadow:0 18px 40px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font:16px/1.65 "Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--accent); text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:1060px; margin:0 auto; padding:0 22px}
+  h2{font-size:clamp(22px,3vw,30px); margin:0 0 8px}
+  .sec{padding:56px 0; border-top:1px solid var(--line)}
+  .lead{color:var(--muted); max-width:70ch}
+  code,kbd,pre{font-family:ui-monospace,Consolas,"Cascadia Mono",monospace}
+  code{background:#0e1530; border:1px solid var(--line); border-radius:6px; padding:1px 6px; font-size:.92em}
+  pre{
+    background:#0a1027; border:1px solid var(--line); border-radius:12px;
+    padding:14px 16px; overflow:auto; font-size:.9em; line-height:1.55;
+  }
+  pre code{background:none; border:0; padding:0; font-size:1em}
+  header{
+    position:sticky; top:0; z-index:9; border-bottom:1px solid var(--line);
+    background:rgba(11,16,32,.88); backdrop-filter:blur(10px);
+  }
+  header .wrap{display:flex; align-items:center; gap:12px; height:62px}
+  header img{width:32px; height:32px}
+  .brand{font-weight:700; letter-spacing:.3px}
+  nav{margin-left:auto; display:flex; gap:20px; font-size:15px}
+  nav a{color:var(--muted)}
+  nav a:hover{color:var(--fg); text-decoration:none}
+  .hero{padding:76px 0 60px; background:
+    radial-gradient(880px 360px at 10% -20%, rgba(79,140,255,.30), transparent 70%),
+    radial-gradient(680px 300px at 90% -10%, rgba(34,211,166,.18), transparent 70%);}
+  .hero h1{font-size:clamp(34px,6vw,56px); line-height:1.1; margin:0 0 16px; letter-spacing:-.5px}
+  .hero p{font-size:clamp(16px,2vw,19px); color:#c6d0ee; max-width:62ch; margin:0 0 14px}
+  .badges{display:flex; flex-wrap:wrap; gap:8px; margin:22px 0 26px; padding:0; list-style:none}
+  .badges li{font-size:13px; color:var(--muted); border:1px solid var(--line); background:#121a36; border-radius:999px; padding:5px 12px}
+  .cta{display:flex; flex-wrap:wrap; gap:12px}
+  .btn{display:inline-block; border-radius:999px; padding:12px 22px; font-weight:600; border:1px solid transparent}
+  .btn-primary{background:linear-gradient(135deg,var(--accent),#7aa9ff); color:#08122c}
+  .btn-primary:hover{text-decoration:none; filter:brightness(1.06)}
+  .btn-ghost{border-color:var(--line); color:var(--fg)}
+  .btn-ghost:hover{text-decoration:none; background:#141d3c}
+  .grid{display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+  .cols{display:grid; gap:18px; grid-template-columns:repeat(auto-fit,minmax(310px,1fr))}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:20px}
+  .card h3{margin:0 0 8px; font-size:17px}
+  .card p{margin:0; color:var(--muted); font-size:15px}
+  .card code{font-size:.85em}
+  table{width:100%; border-collapse:collapse; font-size:15px}
+  th,td{text-align:left; padding:10px 12px; border-bottom:1px solid var(--line)}
+  th{color:var(--muted); font-weight:600}
+  .note{border-left:3px solid var(--accent2); background:#111a36; padding:12px 16px;
+        border-radius:0 10px 10px 0; color:var(--muted); font-size:15px}
+  footer{border-top:1px solid var(--line); padding:26px 0; color:var(--muted); font-size:14px}
+  footer .wrap{display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between}
+  @media (max-width:640px){ nav{display:none} .hero{padding:52px 0 40px} }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <img src="assets/icon.svg" alt="">
+    <span class="brand">OpenIPTV</span>
+    <nav>
+      <a href="#funkcje">Funkcje</a>
+      <a href="#architektura">Jak to działa</a>
+      <a href="#instalacja">Instalacja</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section class="hero">
+  <div class="wrap">
+    <h1>IPTV na dużym ekranie.<br>Jeden kod, dwa systemy.</h1>
+    <p>OpenIPTV to odtwarzacz M3U z programem TV, archiwum i łącznością z panelem
+       Xtream Codes. Jedna warstwa web (<code>www/</code>), dwa opakowania:
+       <b>.ipk</b> dla LG webOS i <b>.apk</b> dla Android TV / Google TV / Fire TV.</p>
+    <p>Sterowanie pilotem, siatka EPG liczona poza wątkiem interfejsu, profile źródeł
+       i dwujęzyczny interfejs. Bez konta i bez chmury — playlista zostaje na urządzeniu.</p>
+    <ul class="badges">
+      <li>LG webOS 6+ (.ipk)</li>
+      <li>Android 5.1+ (.apk)</li>
+      <li>M3U · Xtream Codes</li>
+      <li>EPG / XMLTV</li>
+      <li>Polski / English</li>
+      <li>GitHub Releases</li>
+    </ul>
+    <div class="cta">
+      <a class="btn btn-primary" href="#instalacja">Jak zainstalować</a>
+      <a class="btn btn-ghost" href="#funkcje">Zobacz funkcje</a>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="funkcje">
+  <div class="wrap">
+    <h2>Co potrafi</h2>
+    <p class="lead">Wszystko lokalnie: playlista i ustawienia zostają na urządzeniu,
+       konto nie jest potrzebne.</p>
+    <div class="grid" style="margin-top:22px">
+      <div class="card"><h3>Trzy sposoby na źródło</h3>
+        <p>Link M3U, plik M3U z dysku albo login do panelu Xtream Codes
+           (serwer, użytkownik, hasło). Każde źródło ma własny profil.</p></div>
+      <div class="card"><h3>Program TV (EPG/XMLTV)</h3>
+        <p>Siatka kanałów na osi czasu z przewijaniem pilotem ◀ ▶ oraz mini-EPG
+           na karcie kanału. Parser pracuje w Web Workerze, więc UI się nie zacina.</p></div>
+      <div class="card"><h3>Archiwum i catch-up</h3>
+        <p>Programy z przeszłości odtwarzane z adresu liczonego ze znaczników
+           czasu (<code>utc</code> / <code>lutc</code>), o ile dostawca je udostępnia.</p></div>
+      <div class="card"><h3>Ulubione i historia</h3>
+        <p>Ulubione, ostatnio oglądane, wyszukiwarka, własna kolejność grup
+           i porcjowanie długich list (po 60 kart).</p></div>
+      <div class="card"><h3>Tryb TV i pilot</h3>
+        <p>Nawigacja strzałkami, klawisz Wstecz obsłużony wspólnie na Androidzie
+           i webOS, pasek OSD z nazwą kanału i programem.</p></div>
+      <div class="card"><h3>PL / EN, jasny / ciemny</h3>
+        <p>Interfejs po polsku i angielsku, dwa motywy, oraz obniżane obciążenie:
+           EPG przycinane do widocznych wierszy, siatka rysowana stopniowo.</p></div>
+      <div class="card"><h3>Plan B w odtwarzaniu</h3>
+        <p>Kanał startuje odtwarzaniem sprzętowym (natywnym), a gdy nie ruszy,
+           aplikacja sięga po TS/MSE (mpegts.js), potem HLS (hls.js) i na koniec po ten
+           sam kanał jako <code>.m3u8</code>. Budzik 9 s wykrywa czarny ekran i przełącza
+           sposób odtwarzania, a biblioteki dociągają się leniwie.</p></div>
+      <div class="card"><h3>Ponawianie i czytelne błędy</h3>
+        <p>Nieudane uruchomienie kanału można ponowić 1, 2, 3, 5 albo 10 razy (albo
+           wcale). Komunikat mówi, który silnik zawiódł i co zgłosiło urządzenie:
+           kod błędu, problem sieci, dekodowania lub nieobsługiwany format.</p></div>
+      <div class="card"><h3>Nagranie na pilocie</h3>
+        <p>W archiwum pasek OSD daje „Od początku” oraz skok do poprzedniego albo
+           następnego programu, a ◀ ▶ przewijają o wybrany krok (5 s – 10 min) razem
+           z paskiem czasu nagrania.</p></div>
+      <div class="card"><h3>Menu kanału pod długim OK</h3>
+        <p>MENU na pilocie albo przytrzymane OK otwiera opcje kanału: oglądaj,
+           dodaj lub usuń z ulubionych, archiwum, program TV. Pozycje to zwykłe
+           przyciski, więc to samo menu działa też dotykiem.</p></div>
+      <div class="card"><h3>Ustawienia pod własny serwer</h3>
+        <p>Dni EPG i archiwum wstecz (1–30), krok przewijania nagrania, odświeżanie
+           EPG (przy starcie albo co 30 min – 24 h), liczba prób oraz własny szablon
+           catch-up ze <code>{utc}</code> i <code>{utcend}</code>.</p></div>
+      <div class="card"><h3>EPG skąd chcesz</h3>
+        <p>Adres XMLTV, plik z dysku albo spakowany <code>.gz</code>, a przy loginie
+           Xtream program pobiera się sam z <code>xmltv.php</code>. Brak EPG nie
+           blokuje oglądania — kanał i tak zagra.</p></div>
+      <div class="card"><h3>Aktualizacja bez przymusu</h3>
+        <p>Ustawienia sprawdzają tylko najnowsze wydanie i pokazują krótko, co się
+           zmieniło. Nic nie instaluje się samo: aktualizację uruchamia przycisk na
+           Android TV / Fire TV (systemowy instalator) albo wgranie paczki
+           z komputera na webOS.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="architektura">
+  <div class="wrap">
+    <h2>Jak to działa</h2>
+    <p class="lead">Cała logika i wygląd siedzą w <code>www/</code>. Zmieniasz raz,
+       przebudowujesz paczkę dla jednego systemu albo dla obu.</p>
+    <div class="cols" style="margin-top:22px">
+      <div class="card"><h3>www/ — wspólny kod</h3>
+        <p><code>index.html</code>, <code>app.js</code>, <code>styles.css</code>,
+           <code>epg-worker.js</code> oraz leniwie dociągane <code>lib/</code>
+           (hls.js, mpegts.js, pako). Te same pliki obsługują oba systemy.</p></div>
+      <div class="card"><h3>webos-service/ — natywny fetch</h3>
+        <p>Niewielki serwis Luna (<code>pl.openiptv.player.service.fetch</code>)
+           pobiera playlistę i EPG z pominięciem limitów CORS przeglądarki TV.</p></div>
+      <div class="card"><h3>android/ — obudowa Capacitor</h3>
+        <p>WebView z manifestem pod telewizory: tryb leanback, brak wymogu
+           ekranu dotykowego, orientacja pozioma i dopuszczony strumień http.</p></div>
+      <div class="card"><h3>scripts/ — budowanie</h3>
+        <p><code>build-webos.ps1</code> → <code>.ipk</code>,
+           <code>build-android.ps1</code> → <code>.apk</code>,
+           <code>make-icons.ps1</code> → ikony, <code>publish.ps1</code> → commit
+           i push na GitHuba.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="instalacja">
+  <div class="wrap">
+    <h2>Instalacja</h2>
+    <p class="lead">Gotowe paczki są w wydaniach na GitHubie — najnowsze wydanie ma
+       zawsze dwa pliki: <code>OpenIPTV-&lt;wersja&gt;.apk</code> (Android TV i Fire TV)
+       oraz <code>OpenIPTV-&lt;wersja&gt;.ipk</code> (LG webOS).</p>
+    <div class="cta" style="margin:18px 0 0">
+      <a class="btn btn-primary" href="https://github.com/keczup21/openiptv/releases/latest">Pobierz najnowsze wydanie</a>
+      <a class="btn btn-ghost" href="https://github.com/keczup21/openiptv/releases">Wszystkie wydania</a>
+    </div>
+    <p class="lead" style="margin-top:22px">Albo ze źródeł:</p>
+    <div class="cols" style="margin-top:22px">
+      <div class="card">
+        <h3>LG webOS</h3>
+        <pre><code>npm install
+npm run build:webos
+
+ares-setup-device             # raz, tryb deweloperski na TV
+ares-install -d tv dist/ipk/OpenIPTV-&lt;wersja&gt;.ipk
+ares-launch  -d tv pl.openiptv.player</code></pre>
+        <p>Potrzebny tryb deweloperski na telewizorze i pakiet
+           <code>@webos-tools/cli</code>.</p>
+      </div>
+      <div class="card">
+        <h3>Android TV / Fire TV</h3>
+        <pre><code>npm install
+npm run build:android
+
+adb connect &lt;ip-tv&gt;:5555
+adb install -r dist/android/OpenIPTV-&lt;wersja&gt;.apk</code></pre>
+        <p>Na urządzeniu włącz tryb programisty
+           (<code>Ustawienia → Informacje → 7× klik</code>) i debugowanie ADB.</p>
+      </div>
+      <div class="card">
+        <h3>Obie paczki naraz</h3>
+        <pre><code>npm run build:all    # .ipk + .apk</code></pre>
+        <p>Skrypty przyjmują <code>-OutDir</code>, np.
+           <code>npm run build:android -- -OutDir D:\builds</code>.</p>
+      </div>
+    </div>
+    <p class="note" style="margin-top:20px">Aplikacja ma tożsamość
+       <code>pl.openiptv.player</code>, więc instaluje się obok starszych wydań —
+       ustawień nie przenosi, po aktualizacji trzeba raz wczytać źródło.
+       Poprzednią wersję warto przy okazji odinstalować z urządzenia: miała inny
+       identyfikator paczki, więc zostaje obok nowej.</p>
+  </div>
+</section>
+
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 M1chal (@keczup21) · OpenIPTV</span>
+    <span>Strona serwowana z katalogu <code>docs/</code></span>
+  </div>
+</footer>
+</body>
+</html>
+

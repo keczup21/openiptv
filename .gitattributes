@@ -1,0 +1,14 @@
+# Normalize line endings: LF in the repository, native checkout.
+* text=auto
+
+# Windows scripts stay CRLF so PowerShell/cmd are happy.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.jar binary
+
+# Build outputs and media are binary.
+*.apk binary
+*.ipk binary
+*.png binary
+*.jpg binary

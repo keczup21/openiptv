@@ -1,0 +1,16 @@
+{
+  "id": "pl.openiptv.player",
+  "version": "1.19.1",
+  "vendor": "OpenIPTV",
+  "type": "web",
+  "main": "index.html",
+  "title": "OpenIPTV",
+  "icon": "icon.png",
+  "largeIcon": "largeicon.png",
+  "appDescription": "Odtwarzacz IPTV z EPG, catch-up i archiwum (webOS / Fire TV)",
+  "resolution": "1920x1080",
+  "bgColor": "#0a0c11",
+  "iconColor": "#141824",
+  "disableBackHistoryAPI": true,
+  "requiredACG": []
+}

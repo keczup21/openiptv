@@ -1,0 +1,17 @@
+node_modules/
+dist/
+release/
+android/app/build/
+android/.gradle/
+android/build/
+android/app/src/main/assets/public/
+android/local.properties
+.vscode/
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+*.log
+*.apk
+*.ipk
+

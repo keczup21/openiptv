@@ -1,0 +1,10 @@
+{
+  "appId": "pl.openiptv.player",
+  "appName": "OpenIPTV",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": true,
+    "captureInput": false,
+    "webContentsDebuggingEnabled": true
+  }
+}

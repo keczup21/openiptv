@@ -1,0 +1,29 @@
+{
+  "name": "openiptv",
+  "version": "1.19.1",
+  "private": true,
+  "description": "OpenIPTV - one web codebase, two builds: webOS (.ipk) and Android / Fire TV (.apk).",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "serve": "npx http-server www -p 8080 -c-1",
+    "serve:docs": "npx http-server docs -p 8090 -c-1",
+    "bump": "powershell -ExecutionPolicy Bypass -File scripts/bump-version.ps1",
+    "publish": "powershell -ExecutionPolicy Bypass -File scripts/publish.ps1",
+    "build:webos": "powershell -ExecutionPolicy Bypass -File scripts/build-webos.ps1",
+    "build:android": "powershell -ExecutionPolicy Bypass -File scripts/build-android.ps1",
+    "build:all": "npm run build:webos && npm run build:android",
+    "android:add": "npx cap add android",
+    "android:sync": "npx cap sync android",
+    "android:open": "npx cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/core": "^6.1.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2",
+    "http-server": "^14.1.1"
+  }
+}
