@@ -209,6 +209,28 @@ aside {
 }
 .channel:focus-within { border-color: var(--accent); background: var(--surface-2); }
 
+/* Obwódka fokusu jest jedna — wokół całego kafelka kanału. Nazwa kanału
+   i gwiazdka ulubionych są osobnymi przyciskami, więc dostawały własną ramkę
+   i cień fokusu: razem z obwódką kafelka wyglądało to jak dwie–trzy ramki
+   w jednym kafelku. Fokus wewnątrz kafelka pokazuje obwódka kafelka, a sama
+   gwiazdka — tylko podświetlenie. */
+.channel .channel-main:focus,
+.channel .channel-main:focus-visible {
+  outline: none;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+.channel .favorite-button:focus,
+.channel .favorite-button:focus-visible {
+  outline: none;
+  border-color: transparent;
+  box-shadow: none;
+  transform: none;
+  background: rgba(91,140,255,.16);
+}
+
 .channel-logo {
   width: 58px;
   height: 58px;
@@ -270,7 +292,12 @@ aside {
 
 /* ---------- program tv (EPG) ---------- */
 .guide-screen { display: flex; flex-direction: column; }
-.guide-grid { flex: 1; overflow: auto; padding: 4px 24px 24px; }
+/* Siatka przewija się tylko w pionie. Poziomy pasek pojawiał się, gdy kafelek
+   programu wystawał za koniec osi (krótki program na skraju okna), a wtedy
+   przeglądarka dosuwała widok do sfokusowanego kafelka — cała siatka uciekała
+   w lewo i fokus lądował na uciętej kolumnie. Szerokości kafelków pilnuje
+   też buildGuideProgram() w www/app.js. */
+.guide-grid { flex: 1; overflow-x: hidden; overflow-y: auto; padding: 4px 24px 24px; }
 
 .guide-axis {
   display: flex;
@@ -390,6 +417,9 @@ aside {
   background: var(--grad);
   border-color: transparent;
   box-shadow: 0 0 0 3px rgba(255,255,255,.25);
+  /* bez powiększania kafelka: skala 1.02 na skraju osi wystawała poza pas
+     godzin i przeglądarka dosuwała całą siatkę do fokusu */
+  transform: none;
 }
 .guide-program:focus time, .guide-program:focus span { color: #fff; }
 .guide-program:disabled { cursor: default; }
@@ -425,6 +455,18 @@ aside {
 /* ---------- odtwarzacz ---------- */
 .player-screen { background: #000; }
 .player-screen video { width: 100%; height: 100%; object-fit: contain; }
+/* Naprawa obrazu dla Androidów (Fire TV, Android TV, WebView), które grają sam
+   dźwięk: klatki nie trafiają wtedy do warstwy obrazu i <video> zostaje czarny,
+   choć stan odtwarzania i dźwięk są poprawne. Wymuszenie osobnej warstwy
+   compositingu przywraca obraz. Klasę dokłada app.js (applyVideoLayerFix)
+   tylko na urządzeniach, na których naprawdę pomogła, i zapamiętuje ją
+   w ustawieniach — telewizory bez tego problemu nie zmieniają wyglądu. */
+body.video-layer-fix .player-screen video {
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
 .player-overlay {
   position: absolute;
   left: 40px; right: 40px; bottom: 40px;
@@ -725,21 +767,31 @@ body.uimode-tv select:focus,
 body.uimode-tv [tabindex="0"]:focus {
   transform: none;
   box-shadow: none;
-  border-color: #fff;
+  /* Biała obwódka obok niebieskiej wyglądała jak dwie ramki w jednym
+     przycisku — fokus na TV to teraz jedna, niebieska obwódka. */
+  border-color: transparent;
   outline: 4px solid var(--accent);
   outline-offset: 2px;
 }
 body.uimode-tv .channel:focus-within {
-  border-color: #fff;
+  border-color: var(--border-soft);
   outline: 3px solid var(--accent);
   outline-offset: 2px;
 }
 /* Obwódka fokusu jest jedna, wokół całego kafelka kanału. Sam środek (nazwa
-   kanału, program teraz i następny) dostawał wcześniej własną, drugą obwódkę
+   kanału) i gwiazdka ulubionych dostawały wcześniej własną, drugą obwódkę
    — na telewizorze wyglądało to jak trzy osobne ramki w jednej. */
 body.uimode-tv .channel .channel-main:focus,
 body.uimode-tv .channel .channel-main:focus-visible {
   outline: none;
+  border-color: transparent;
+  background: transparent;
+}
+body.uimode-tv .channel .favorite-button:focus,
+body.uimode-tv .channel .favorite-button:focus-visible {
+  outline: none;
+  border-color: transparent;
+  background: rgba(91,140,255,.16);
 }
 
 /* pasek przewijania na TV jest bezużyteczny, a kosztuje przemalowanie ekranu */

@@ -18,6 +18,26 @@ z numerem opisuje akapit wyżej). Opis wydania na GitHubie powstaje z tego wpisu
 `npm run notes` (`scripts/release-notes.js`) bierze z changeloga tylko sekcję
 wydawanej wersji.
 
+## [2.0.2] — 2026-10-03
+
+### Poprawiono
+- **Program TV nie zamraża aplikacji.** Rozpakowanie EPG (to potrafi być
+  kilkadziesiąt megabajtów) dzieje się poza głównym wątkiem, więc lista kanałów
+  i pilot odpowiadają od razu; gdy się nie uda, jest komunikat, a nie pusty
+  program.
+- **Program TV przewija się równo i mieści się na ekranie.** Siatka nie drga
+  przy dojeżdżaniu fokusem, nie ucieka za prawą krawędź i rysuje tylko widoczne
+  kanały. Po zmianie dnia zostaje pod fokusem ten sam kanał i program, na tym
+  samym miejscu ekranu.
+- **Czarny obraz z dźwiękiem sam się naprawia.** Aplikacja wymusza warstwę
+  obrazu, powtarza ten sam kanał, a potem próbuje kolejnego sposobu odtwarzania
+  — z komunikatem, co się stało. Sposób, który dał obraz, pamięta na potem.
+- **Obwódka fokusu jest pojedyncza** — na kafelku kanału i na pigułce kategorii,
+  zamiast dwóch jedna na drugiej.
+- **Nagłówek programu TV jest znowu czysty.** Legenda pilota to tekst, a nie
+  ikona: ikonę rysowaliśmy też napisom poza przyciskami, a bez rozmiaru
+  z reguł przycisku rozciągała się na całą szerokość nagłówka.
+
 ## [2.0.1] — 2026-10-03
 
 ### Zmieniono

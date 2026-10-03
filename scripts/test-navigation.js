@@ -359,7 +359,15 @@ check("ikony naglowka nie sa emoji (zadnego znaku emoji w przyciskach)",
 check("podpowiedz pilota nadal jest w naglowku listy",
   html.indexOf('id="tvHint"') > 0 && src.indexOf('hint.textContent = t("tv_hint")') > 0);
 check("napisy z ikona z index.html przechodza przez setIconLabel",
-  src.indexOf("if (iconForLabel(v)) setIconLabel(els[i], v);") > 0);
+  src.indexOf("setIconLabel(els[i], v);") > 0);
+/* Ikona SVG rozmiar bierze z regul przycisku („button .icon”), wiec napis
+   z ikona w innym kontenerze rozszedlby sie na caly naglowek: tak wlasnie
+   legenda pilota („◀ ▶ — przewijanie godzin”) robila wielki znak w programie
+   TV. Dlatego ikony dostaja wylacznie przyciski, a legenda zostaje tekstem. */
+check("napis z ikona poza przyciskiem zostaje tekstem (legenda pilota)",
+  src.indexOf('if (els[i].tagName === "BUTTON" && iconForLabel(v)) setIconLabel(els[i], v);') > 0 &&
+  html.indexOf('<span id="guidePanHint"') > 0 &&
+  icons.iconForLabel("◀ ▶ — przewijanie godzin • ▲ ▼ — kanały") === "prev");
 
 /* <option> nie moze dostac elementu potomnego, wiec zaden napis z ikona nie
    moze byc uzyty w liscie wyboru — inaczej pozycja zostalaby pusta */
@@ -913,11 +921,25 @@ check("ekran jest pokazywany przed rysowaniem (godziny z realnej szerokosci)",
   src.indexOf('showScreen("guideScreen");\n    renderGuide();') > 0 &&
   src.indexOf("var inner = guideInnerWidth();") > 0);
 check("zmiana dnia albo godzin zostawia ten sam kanal pod fokusem",
-  src.indexOf("function guideRedraw()") > 0 &&
-  src.indexOf("guide.windowStart += dir * 24 * 3600000;") > 0 &&
-  src.indexOf("guide.windowStart += hours * 3600000;") > 0 &&
+  src.indexOf("function guideRedraw(shift)") > 0 &&
+  src.indexOf("guideSetWindow(guide.windowStart + dir * 24 * 3600000);") > 0 &&
+  src.indexOf("guideSetWindow(next - (next % 3600000));") > 0 &&
   src.indexOf("if (rowIndex > 0) guide.anchor = rowIndex - 1;") > 0 &&
-  src.indexOf("if (inGrid) focusGuideRowBlock(rowIndex);") > 0);
+  src.indexOf("if (inGrid) focusGuideRowBlock(rowIndex, focusTime, focusSame);") > 0);
+check("po zmianie dnia albo godzin wracamy na ten sam program i to samo miejsce wiersza",
+  src.indexOf("var focusTime = guideFocusTime();") > 0 &&
+  src.indexOf("var keepOffset = guideRowViewportOffset();") > 0 &&
+  src.indexOf("guideRestoreRowOffset(keepOffset);") > 0 &&
+  src.indexOf("function guideBlockAtTime(row, time)") > 0);
+check("przeskok o dobe szuka tej samej godziny, a nie ostatniego programu w kanale",
+  src.indexOf("var focusSame = focusTime && shift ? focusTime + shift : 0;") > 0 &&
+  src.indexOf("function guideBlockContaining(row, time)") > 0 &&
+  src.indexOf("var block = guideBlockContaining(row, time) || guideBlockContaining(row, sameTime) ||") > 0 &&
+  src.indexOf("function focusGuideRowBlock(index, time, sameTime)") > 0 &&
+  /* okno zmienia sie wylacznie przez guideSetWindow: gdy ktos znowu ustawi
+     guide.windowStart z pominieciem przeskoku, fokus przy „Wczoraj” wroci na
+     ostatni program w kanale (dzien bez towarzyszacego guideRedraw) */
+  (src.match(/guide\.windowStart = (?!start;)/g) || []).length === 1);
 check("przycisk dnia nie cofa widoku siatki na poczatek listy",
   src.indexOf("var inGrid = rowIndex >= 0;") > 0 &&
   src.indexOf("var top = Math.max(0, grid.scrollTop - guideRowsOffset());") > 0 &&
@@ -1261,6 +1283,186 @@ ck.api.syncCornerClock();
 ck.api.syncCornerClock();
 check("kolejne ustawienie budzika nie mnozy zegarow (jeden na raz)",
   ck.calls.timers.length === 2 && ck.calls.shown === 2, JSON.stringify(ck.calls));
+
+
+/* --- 25. brak obrazu: dzwiek gra, ekran czarny ------------------------------
+   Na czesci dekoderow Android/Fire TV <video> odtwarza sam dzwiek — stan
+   odtwarzania jest poprawny, wiec zwykly budzik uznawal kanal za uruchomiony
+   i czarny ekran zostawal na zawsze. Sprawdzamy, ze aplikacja: (1) wykrywa brak
+   obrazu po wymiarach klatki, (2) probuje naprawic warstwe obrazu i powtarza ten
+   sam strumien, (3) dopiero potem zmienia sposob odtwarzania, (4) pamieta ten,
+   ktory naprawde dal obraz. */
+check("brak obrazu wykrywany po wymiarach klatki, nie po stanie odtwarzania",
+  src.indexOf("function videoHasPicture(video)") > 0 &&
+  src.indexOf("return !!video && (video.videoWidth | 0) > 0 && (video.videoHeight | 0) > 0;") > 0 &&
+  src.indexOf("var PICTURE_TIMEOUT = 6000;") > 0);
+check("budziki obrazu uzbrajane PO starcie silnika (token MSE/HLS inaczej je uniewaznial)",
+  src.indexOf("armStartWatchdog(token);\n    armPictureWatchdog(token);") > 0 &&
+  src.indexOf("if (typeof token !== \"number\") token = state.engineToken;") > 0);
+check("pierwsza klatka zdejmuje budzik i zapamietuje sposob odtwarzania",
+  src.indexOf("function notePicture()") > 0 &&
+  src.indexOf("clearPictureWatchdog();\n    rememberEngine(state.engine);") > 0 &&
+  src.indexOf("notePicture();\n      updateOsdProgress();") > 0 &&
+  src.indexOf("video.addEventListener(\"canplay\", function () {") > 0);
+check("naprawa warstwy obrazu jest w CSS i tylko na zadanie aplikacji",
+  css.indexOf("body.video-layer-fix .player-screen video") > 0 &&
+  css.indexOf("transform: translateZ(0);") > 0 &&
+  src.indexOf("document.body.classList.toggle(\"video-layer-fix\", want)") > 0 &&
+  src.indexOf("if (document.body) document.body.classList.toggle(\"video-layer-fix\", want);") > 0);
+check("brak obrazu: jedna runda po sposobach odtwarzania i komunikat, co sie stalo",
+  src.indexOf("nextSourceEntry(t(\"err_no_picture\"), 0, false, 0, t(\"err_no_picture_hint\"));") > 0 &&
+  src.indexOf("err_no_picture_hint:") > 0 &&
+  src.indexOf("if (!custom || limit > 0) {") > 0);
+const picStart = src.indexOf("var PICTURE_TIMEOUT = 6000;");
+const picEnd = src.indexOf("function nextSourceEntry(");
+if (picStart < 0 || picEnd <= picStart) throw new Error("Nie znalazlem budzika obrazu w app.js");
+const codePicture = src.slice(picStart, src.lastIndexOf("\n\n", picEnd) + 2);
+["videoHasPicture", "armPictureWatchdog", "retryCurrentEntry", "clearPictureWatchdog",
+  "notePicture", "applyVideoLayerFix", "rememberEngine"].forEach(function (fn) {
+  if (codePicture.indexOf("function " + fn) < 0) throw new Error("Wyciety blok nie ma " + fn);
+});
+
+/* atrapa odtwarzacza: jedno <video> (z obrazem albo bez), licznik zapisow
+   ustawien, kolejka budzikow wywolywana recznie (tak jakby plynal czas) */
+function pictureHarness(o) {
+  o = o || {};
+  const calls = { errors: [], started: [], next: [], saves: 0, pending: [] };
+  const video = { videoWidth: o.picture ? 1280 : 0, videoHeight: o.picture ? 720 : 0 };
+  const classes = [];
+  let timerId = 0;
+  const sandbox = {
+    settings: { videoLayerFix: false, engineHint: "" },
+    state: {
+      watchChannel: { name: "TVN" },
+      engineToken: 7,
+      engine: o.engine || "native",
+      pictureTimer: null,
+      pictureRetried: false,
+      retryTimer: null,
+      sources: [{ engine: "native", url: "http://s/x.ts" }, { engine: "mse", url: "http://s/x.ts" }],
+      sourceIndex: 0
+    },
+    t: function (key) { return "<" + key + ">"; },
+    $: function (id) { return id === "video" ? video : null; },
+    document: {
+      body: {
+        classList: {
+          toggle: function (name, on) {
+            const i = classes.indexOf(name);
+            if (on && i < 0) classes.push(name);
+            if (!on && i >= 0) classes.splice(i, 1);
+          }
+        }
+      }
+    },
+    saveSettings: function () { calls.saves++; },
+    showPlayerError: function (message) { calls.errors.push(message); },
+    startSourceEntry: function (entry) { calls.started.push(entry); },
+    nextSourceEntry: function (message, delay, silent, maxCycles, finalHint) {
+      calls.next.push({ message: message, maxCycles: maxCycles, finalHint: finalHint });
+    },
+    setTimeout: function (fn) { timerId++; calls.pending.push(fn); return timerId; },
+    clearTimeout: function () {}
+  };
+  run(codePicture, sandbox);
+  return {
+    api: sandbox,
+    calls: calls,
+    video: video,
+    classes: classes,
+    /* wywoluje budziki czekajace w kolejce */
+    fire: function () {
+      const queue = calls.pending.splice(0);
+      queue.forEach(function (fn) { fn(); });
+      return queue.length;
+    }
+  };
+}
+/* dzwiek bez obrazu: budzik obrazu najpierw naprawia warstwe, potem powtarza wpis */
+let ph = pictureHarness({});
+ph.api.armPictureWatchdog(7);
+ph.fire();
+check("uruchomione: czarny obraz uruchamia naprawe warstwy obrazu",
+  ph.classes.indexOf("video-layer-fix") >= 0 && ph.api.settings.videoLayerFix === true &&
+  ph.calls.saves === 1 && ph.calls.next.length === 0 && ph.calls.started.length === 0,
+  JSON.stringify({ classes: ph.classes, next: ph.calls.next, started: ph.calls.started }));
+check("uruchomione: komunikat mowi, ze to dzwiek bez obrazu",
+  ph.calls.errors.length === 1 && ph.calls.errors[0] === "<err_no_picture>",
+  JSON.stringify(ph.calls.errors));
+check("uruchomione: powtorka startuje chwile pozniej, a nie od razu",
+  ph.calls.pending.length === 1 && ph.calls.started.length === 0,
+  "budzikow w kolejce: " + ph.calls.pending.length);
+ph.fire();
+check("uruchomione: ten sam strumien jest probowany jeszcze raz (bez zmiany sposobu)",
+  ph.calls.started.length === 1 && ph.calls.started[0].engine === "native" &&
+  ph.calls.started[0].url === "http://s/x.ts" && ph.api.state.pictureRetried === true &&
+  ph.calls.next.length === 0,
+  JSON.stringify(ph.calls.started));
+ph.api.armPictureWatchdog(7);
+ph.fire();
+check("uruchomione: gdy naprawa nie pomogla, kolejka idzie dalej i konczy po jednej rundzie",
+  ph.calls.next.length === 1 && ph.calls.next[0].maxCycles === 0 &&
+  ph.calls.next[0].finalHint === "<err_no_picture_hint>" &&
+  ph.calls.next[0].message === "<err_no_picture>",
+  JSON.stringify(ph.calls.next));
+
+/* zmiana kanalu w miedzyczasie: stary budzik obrazu nie moze nic zrobic */
+ph = pictureHarness({});
+ph.api.armPictureWatchdog(7);
+ph.api.state.engineToken = 8;
+ph.fire();
+check("uruchomione: budzik obrazu z porzuconej proby nic nie zmienia",
+  ph.classes.length === 0 && ph.calls.errors.length === 0 && ph.calls.next.length === 0 &&
+  ph.calls.started.length === 0,
+  JSON.stringify({ classes: ph.classes, next: ph.calls.next }));
+/* obraz jest: budzik obrazu nic nie zmienia, a tryb pracy idzie do pamieci */
+ph = pictureHarness({ picture: true, engine: "mse" });
+ph.api.armPictureWatchdog(7);
+ph.fire();
+check("uruchomione: obraz jest, wiec budzik obrazu nic nie zmienia",
+  ph.classes.length === 0 && ph.calls.errors.length === 0 && ph.calls.next.length === 0 &&
+  ph.calls.started.length === 0,
+  JSON.stringify({ classes: ph.classes, next: ph.calls.next }));
+ph.api.notePicture();
+check("uruchomione: udany sposob odtwarzania jest zapamietany (MSE dal obraz)",
+  ph.api.settings.engineHint === "mse" && ph.calls.saves === 1 &&
+  ph.api.state.pictureTimer === null,
+  JSON.stringify({ hint: ph.api.settings.engineHint, saves: ph.calls.saves }));
+
+ph = pictureHarness({ engine: "mse" });
+check("uruchomione: bez obrazu tryb nie trafia do pamieci (MSE sam nie dostaje pochwaly)",
+  ph.api.notePicture() === false && ph.api.settings.engineHint === "" && ph.calls.saves === 0,
+  JSON.stringify({ hint: ph.api.settings.engineHint, saves: ph.calls.saves }));
+
+/* zapamietany tryb idzie na poczatek kolejki nastepnego kanalu */
+const queueStart = src.indexOf("function buildSourceQueue(primaryUrl)");
+const queueEnd = src.indexOf("function startSourceEntry(");
+if (queueStart < 0 || queueEnd <= queueStart) throw new Error("Nie znalazlem kolejki prob w app.js");
+const codeQueue = src.slice(queueStart, queueEnd);
+if (codeQueue.indexOf("function preferEngine(queue, hint)") < 0) {
+  throw new Error("Wyciety blok nie ma preferEngine");
+}
+const queueBox = { settings: { engineHint: "" } };
+run(codeQueue, queueBox);
+function engines(url) {
+  return queueBox.buildSourceQueue(url).map(function (e) { return e.engine; });
+}
+const qPlain = engines("http://s/x.ts");
+check("uruchomione: bez pamieci kolejnosc prob zostaje jak byla (natywny, MSE, HLS)",
+  qPlain.join(",") === "native,mse,native,hls", JSON.stringify(qPlain));
+queueBox.settings.engineHint = "mse";
+const qMse = queueBox.buildSourceQueue("http://s/x.ts");
+check("uruchomione: zapamietany MSE idzie na poczatek kolejki nastepnego kanalu",
+  qMse[0].engine === "mse" && qMse[0].url === "http://s/x.ts" && qMse.length === qPlain.length &&
+  qMse.map(function (e) { return e.engine; }).indexOf("native") === 1,
+  JSON.stringify(qMse.map(function (e) { return e.engine; })));
+queueBox.settings.engineHint = "hls";
+check("uruchomione: to samo dla HLS (kanal .m3u8 i .ts)",
+  engines("http://s/x.m3u8")[0] === "hls" && engines("http://s/x.ts")[0] === "hls",
+  JSON.stringify([engines("http://s/x.m3u8"), engines("http://s/x.ts")]));
+queueBox.settings.engineHint = "bogus";
+check("uruchomione: nieznana pamiec nic nie psuje",
+  engines("http://s/x.ts").join(",") === qPlain.join(","), JSON.stringify(engines("http://s/x.ts")));
 
 
 console.log("");

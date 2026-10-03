@@ -21,7 +21,7 @@
      był natychmiastowy i nie przepisywał za każdym razem megabajtów danych. */
   var BLOBS_KEY = "openiptvBlobs";
   var BLOB_FIELDS = ["playlistFileText", "epgFileText", "playlistFileName", "epgFileName"];
-  var APP_VERSION = "2.0.1";
+  var APP_VERSION = "2.0.2";
   var SCHEMA_VERSION = 4;
 
   /* „Ostatnio oglądane”: kanał trafia na listę po 10 s oglądania,
@@ -145,6 +145,12 @@
     lastErrorAt: 0,
     /* budzik sprawdzający, czy obraz w ogóle się pojawił */
     startTimer: null,
+    /* drugi budzik: dźwięk już gra, a klatki obrazu nie ma (patrz
+       armPictureWatchdog) — pilnuje czarnego ekranu na Androidzie */
+    pictureTimer: null,
+    /* czy przy tym wpisie kolejki próbowaliśmy już naprawy warstwy obrazu;
+       bez tego jedna próba zamieniałaby się w pętlę */
+    pictureRetried: false,
     /* blokada zdarzeń przewijania listy (rysujemy jedną porcję na raz) */
     listScrollLock: false
   };
@@ -212,6 +218,14 @@
     theme: "dark",
     uiMode: "auto",
     uiScale: "auto",
+    /* Zapamiętany sposób odtwarzania („native” / „mse” / „hls”). Ustawia go
+       aplikacja sama, gdy tylko zobaczy pierwszy obraz — patrz rememberEngine().
+       Dzięki temu dekoder, który oddaje sam dźwięk, nie jest próbowany
+       od nowa przy każdym kanale. */
+    engineHint: "",
+    /* Naprawa warstwy obrazu dla Androidów, które grają dźwięk bez klatki —
+       patrz applyVideoLayerFix(). Włącza się tylko wtedy, gdy naprawdę pomogła. */
+    videoLayerFix: false,
     osdEnabled: true,
     clockEnabled: false,
     favorites: {},
@@ -270,6 +284,8 @@
     err_epg_xml: "EPG nie jest poprawnym XMLTV.", err_gzip: "Brak biblioteki rozpakowującej GZIP.",
     err_playback: "Nie udało się rozpocząć odtwarzania.",
     err_stream: "Błąd odtwarzania strumienia. Format lub serwer może nie być obsługiwany przez ten model TV.",
+    err_no_picture: "Obraz się nie pojawia (gra tylko dźwięk) — próbuję innego sposobu odtwarzania.",
+    err_no_picture_hint: "Żaden sposób odtwarzania nie dał obrazu — ten telewizor odtwarza z tego kanału sam dźwięk (najczęściej nieobsługiwany kodek wideo tej transmisji).",
     err_catchup: "Brak obsługiwanego szablonu catch-up dla tego kanału.",
     err_read_file: "Nie udało się odczytać pliku.", err_read_m3u: "Nie udało się odczytać pliku M3U.",
     err_read_epg: "Nie udało się odczytać pliku EPG.", err_gunzip: "Nie udało się rozpakować pliku EPG: {msg}",
@@ -475,6 +491,8 @@
     err_epg_xml: "EPG is not valid XMLTV.", err_gzip: "Missing GZIP decompression library.",
     err_playback: "Failed to start playback.",
     err_stream: "Stream playback error. The format or server may not be supported by this TV model.",
+    err_no_picture: "No picture (audio only) — trying another playback method.",
+    err_no_picture_hint: "No playback method produced a picture — this TV plays only the audio of this channel (usually a video codec it cannot decode).",
     err_catchup: "No supported catch-up template for this channel.",
     err_read_file: "Failed to read file.", err_read_m3u: "Failed to read M3U file.",
     err_read_epg: "Failed to read EPG file.", err_gunzip: "Failed to decompress EPG file: {msg}",
@@ -743,9 +761,12 @@
       var v = t(els[i].getAttribute("data-i18n"));
       if (v === undefined) continue;
       /* napisy ze znakiem ikony („⇅ Kolejność grup”) dostają SVG — ale tylko
-         one: do <option> i innych kontenerów tekstowych nie wolno wstawiać
-         elementów potomnych, a bez ikony textContent wystarcza */
-      if (iconForLabel(v)) setIconLabel(els[i], v);
+         przyciski: do <option> i innych kontenerów tekstowych nie wolno
+         wstawiać elementów potomnych, a legenda pilota („◀ ▶ — przewijanie
+         godzin”) ma zostać tekstem. Rozmiar ikony bierze się z reguł
+         przycisku („button .icon”), więc w innym kontenerze SVG rozjeżdżał
+         się na cały nagłówek programu TV. */
+      if (els[i].tagName === "BUTTON" && iconForLabel(v)) setIconLabel(els[i], v);
       else els[i].textContent = v;
     }
     var ph = document.querySelectorAll("[data-i18n-placeholder]");
@@ -1507,7 +1528,7 @@
      więc aktualizacja nie wymaga ADB ani komputera. webOS nie instaluje .ipk
      sam — tam pokazujemy adres wydania, a paczkę wgrywa się z komputera. */
 
-  var UPDATE_REPO = "keczup21/openiptv";
+  var UPDATE_REPO = "keczup21/teleiptv";
   var UPDATE_API = "https://api.github.com/repos/" + UPDATE_REPO + "/releases/latest";
   var UPDATE_PAGE = "https://github.com/" + UPDATE_REPO + "/releases/latest";
   var updateState = { asset: null, busy: false, progressBound: false };
@@ -2047,9 +2068,13 @@
   /* EPG pobieramy ZAWSZE binarnie i sami wykrywamy GZIP po nagłówku pliku
      (0x1f 0x8b) — nie po rozszerzeniu adresu. Wiele serwerów podaje spakowany
      plik pod adresem .xml, .php albo bez rozszerzenia i takie EPG wcześniej
-     w ogóle się nie wczytywało. */
+     w ogóle się nie wczytywało. Zwracamy surowe bajty, bo rozpakowanie (pako)
+     i zamiana na tekst to najdroższa część wczytywania EPG — robi je wątek
+     parsera (patrz parseXmltvAsync), żeby nie zamrozić obrazu i pilota. */
   function fetchEpg(url, onProgress) {
-    return httpGet(url, true, onProgress).then(gunzipText);
+    return httpGet(url, true, onProgress).then(function (buffer) {
+      return { buffer: buffer };
+    });
   }
 
   /* ===============================  PARSERY  =============================== */
@@ -2252,8 +2277,21 @@
   }
 
   /* parsuje XMLTV w Web Workerze, żeby nie blokować UI; z fallbackiem synchronicznym */
-  function parseXmltvAsync(text, daysBack) {
-    return new Promise(function (resolve) {
+  /* Rozpakowanie zapasowe: to samo, co robi epg-worker.js, tylko na głównym
+     wątku i z pako wczytanym przez index.html. Sięgamy po nie wyłącznie wtedy,
+     gdy wątek nie wystartował (np. brak pliku) — normalnie bajty zostają
+     w wątku i obraz się nie zacina. */
+  function epgTextFrom(pack) {
+    if (pack && pack.text) return String(pack.text);
+    return gunzipText(pack ? pack.buffer : null);
+  }
+
+  /* Parsowanie XMLTV w wątku. Wątek dostaje albo gotowy tekst (EPG z pliku),
+     albo surowe, ewentualnie spakowane bajty z pobrania — rozpakowanie
+     i zamiana na tekst dla dużego EPG trwały kilka sekund i blokowały obraz. */
+  function parseXmltvAsync(payload, daysBack) {
+    var pack = payload && (payload.text || payload.buffer) ? payload : { text: payload };
+    return new Promise(function (resolve, reject) {
       var settled = false;
       var finish = function (programs) {
         if (!settled) {
@@ -2261,28 +2299,46 @@
           resolve(programs);
         }
       };
+      var fail = function (error) {
+        if (!settled) {
+          settled = true;
+          reject(error instanceof Error ? error : new Error(String(error)));
+        }
+      };
+      /* bez wątku nie ma na co czekać — liczymy od razu, a błąd parsowania
+         pokazujemy w pasku zamiast zostawiać napis „parsowanie EPG” */
+      var fallback = function () {
+        try {
+          finish(parseXmltv(epgTextFrom(pack), daysBack));
+        } catch (error) {
+          fail(error);
+        }
+      };
       var worker;
       try {
         worker = new Worker("epg-worker.js");
       } catch (e) {
-        finish(parseXmltv(text, daysBack));
+        fallback();
         return;
       }
       worker.onmessage = function (event) {
         var data = event.data || {};
+        try { worker.terminate(); } catch (e2) {}
         if (data.error) {
-          finish(parseXmltv(text, daysBack));
+          fallback();
         } else {
           epgAliases = data.aliases || {};
           finish(data.programs || {});
         }
-        try { worker.terminate(); } catch (e2) {}
       };
       worker.onerror = function () {
-        finish(parseXmltv(text, daysBack));
         try { worker.terminate(); } catch (e2) {}
+        fallback();
       };
-      worker.postMessage({ text: text, daysBack: daysBack });
+      /* Bajty idą do wątku bez przenoszenia własności: gdyby wątek się nie
+         uruchomił, parser zapasowy musi mieć z czego czytać. */
+      if (pack.buffer && !pack.text) worker.postMessage({ buffer: pack.buffer, daysBack: daysBack });
+      else worker.postMessage({ text: pack.text || "", daysBack: daysBack });
     });
   }
 
@@ -2294,13 +2350,13 @@
     }
     setStatus(state.channels.length + " " + t("channels_count") + " • " + t("loading_epg"));
     var epgSource = profile.epgFileText
-      ? Promise.resolve(profile.epgFileText)
+      ? Promise.resolve({ text: profile.epgFileText })
       : fetchEpg(epgUrl, function (info) {
           setStatus(state.channels.length + " " + t("channels_count") + " • " + t("loading_epg") + " " + formatProgress(info));
         });
-    epgSource.then(function (xml) {
+    epgSource.then(function (payload) {
       setStatus(state.channels.length + " " + t("channels_count") + " • " + t("parsing_epg"));
-      return parseXmltvAsync(xml, settings.archiveDays).then(function (programs) {
+      return parseXmltvAsync(payload, settings.archiveDays).then(function (programs) {
         state.programs = programs;
         var count = 0;
         for (var k in state.programs) count += state.programs[k].length;
@@ -2312,6 +2368,12 @@
     }, function (error) {
       state.programs = {};
       setStatus(state.channels.length + " " + t("channels_count") + " • EPG: " + t("epg_no_data") + " (" + error.message + ")");
+    }).catch(function (error) {
+      /* błąd rozpakowania albo parsowania nie może zostawić na pasku napisu
+         „parsowanie EPG” — pokazujemy powód obok liczby kanałów */
+      state.programs = {};
+      setStatus(state.channels.length + " " + t("channels_count") + " • EPG: " + t("epg_no_data") +
+        " (" + (error && error.message ? error.message : error) + ")");
     });
   }
 
@@ -3213,6 +3275,9 @@
     video.addEventListener("playing", function () {
       $("playerError").classList.add("hidden");
       clearStartWatchdog();
+      /* Dźwięk wystartował, ale to jeszcze nie znaczy, że jest obraz —
+         dopiero on zdejmuje budzik obrazu (patrz notePicture). */
+      notePicture();
       /* od tego momentu liczy się czas oglądania dla „Ostatnio oglądane” */
       state.watchStart = state.watchStart || Date.now();
       scheduleRecentRecord();
@@ -3250,13 +3315,22 @@
       showPlayerError(t("osd_buffering") + " (" + engineName(state.engine) + ")");
     });
 
-    video.addEventListener("timeupdate", updateOsdProgress);
+    video.addEventListener("timeupdate", function () {
+      /* Pierwsza klatka może pojawić się już po zdarzeniu „canplay” (dekoder
+         zdekodował ją później) — dlatego budzik obrazu sprawdzamy też tutaj. */
+      notePicture();
+      updateOsdProgress();
+    });
     video.addEventListener("loadedmetadata", function () {
       /* obraz wczytał metadane — nie ma sensu czekać na kolejny sposób */
       clearStartWatchdog();
+      notePicture();
       updateOsd();
     });
-    video.addEventListener("canplay", clearStartWatchdog);
+    video.addEventListener("canplay", function () {
+      clearStartWatchdog();
+      notePicture();
+    });
 
     video.addEventListener("error", function () {
       markWatchedTime();
@@ -3325,6 +3399,9 @@
     state.engineInstance = null;
     state.engineLoading = false;
     clearStartWatchdog();
+    /* Budziki pilnujące obrazu nie mają już czego pilnować — nowy wpis
+       kolejki uzbroi je od nowa (patrz startSourceEntry). */
+    clearPictureWatchdog();
     if (!instance) return;
     try { instance.close(); } catch (error) { /* już zamknięty */ }
   }
@@ -3496,32 +3573,160 @@
       queue.push({ engine: "native", url: hlsUrl });
       queue.push({ engine: "hls", url: hlsUrl });
     }
+    return preferEngine(queue, settings.engineHint);
+  }
+
+  /* Zapamiętany sposób odtwarzania idzie na początek kolejki. Jeśli telewizor
+     oddaje przez natywny dekoder sam dźwięk, a obraz pojawia się dopiero przez
+     MSE albo HLS, nie ma sensu kazać użytkownikowi czekać na to samo przy
+     każdym kanale. Pozostałe wpisy zostają w kolejce, więc gdy zapamiętany
+     sposób zawiedzie (np. inny kodek), przejście dalej działa jak dotąd. */
+  function preferEngine(queue, hint) {
+    if (hint !== "mse" && hint !== "hls") return queue;
+    for (var i = 1; i < queue.length; i++) {
+      if (queue[i].engine === hint) {
+        var entry = queue.splice(i, 1)[0];
+        queue.unshift(entry);
+        break;
+      }
+    }
     return queue;
   }
 
   function startSourceEntry(entry) {
     if (!entry || !state.watchChannel) return;
+    /* Nowy token na każdą próbę: unieważnia spóźnione wczytanie biblioteki
+       (albo odpowiedź MSE) z wpisu, który już porzuciliśmy. */
+    nextEngineToken();
     state.currentSource = entry.url;
     state.engine = entry.engine;
-    armStartWatchdog();
+    state.pictureRetried = false;
     if (entry.engine === "mse") startMseSource(entry);
     else if (entry.engine === "hls") startHlsSource(entry);
     else playSource(entry.url);
+    /* Budziki uzbrajamy PO starcie silnika: MSE i HLS tworzą w środku własny
+       token (unieważniają poprzednie wczytywanie), więc token wzięty wcześniej
+       nigdy by się nie zgadzał i budzik nie zadziałałby wcale — a to właśnie on
+       ratuje czarny obraz. */
+    var token = state.engineToken;
+    armStartWatchdog(token);
+    armPictureWatchdog(token);
   }
 
   /* Nie każdy telewizor zgłasza błąd odtwarzania — czasem <video> po prostu
      „wisi” na czarnym ekranie. Ten budzik pilnuje, żeby brak obrazu w ciągu
      START_TIMEOUT ms przełączył kolejkę na następny sposób odtwarzania. */
-  function armStartWatchdog() {
+  function armStartWatchdog(token) {
     clearTimeout(state.startTimer);
-    var token = state.engineToken;
+    if (typeof token !== "number") token = state.engineToken;
     state.startTimer = setTimeout(function () {
       state.startTimer = null;
       if (!state.watchChannel || state.engineToken !== token) return;
       var video = $("video");
-      if (video && video.readyState >= 2 && !video.paused) return;   /* obraz jest */
+      if (video && video.readyState >= 2 && !video.paused) {
+        /* Dźwięk już leci, więc zwykły budzik uznałby odtwarzanie za udane.
+           Sprawdzamy, czy jest także obraz — i jeśli nie, oddajemy sprawę
+           budzikowi obrazu (jest już uzbrojony, patrz armPictureWatchdog). */
+        if (videoHasPicture(video)) return;
+        armPictureWatchdog(token);
+        return;
+      }
       nextSourceEntry(t("err_stream") + " (" + t("osd_buffering") + ")", 0);
     }, START_TIMEOUT);
+  }
+
+  /* Ile ms odtwarzania bez ani jednej klatki uznajemy za zablokowany dekoder. */
+  var PICTURE_TIMEOUT = 6000;
+
+  /* obraz to nie dźwięk: dopóki nie ma ani jednej klatki, <video> jest czarne.
+     Wymiary klatki (videoWidth/videoHeight) to jedyny sygnał — stan odtwarzania
+     i dźwięk są wtedy poprawny, więc po nich czarnego ekranu nie widać. */
+  function videoHasPicture(video) {
+    return !!video && (video.videoWidth | 0) > 0 && (video.videoHeight | 0) > 0;
+  }
+
+  /* Drugi budzik: dźwięk już gra, czekamy jeszcze chwilę na pierwszą klatkę.
+     Bez tego kanał, którego dekoder oddaje tylko audio, zostawał czarny na
+     zawsze — kolejka prób nie przechodziła dalej, bo <video> „grało”.
+
+     Kolejność reakcji jest celowa:
+       1. naprawa warstwy obrazu (Fire TV potrafi oddać sam dźwięk) i jedna
+          powtórka tego samego strumienia — działa u większości telewizorów,
+          a nie zmienia wybranego sposobu odtwarzania,
+       2. dopiero potem następny wpis kolejki: to jedyna szansa, gdy dźwięk
+          odtwarza dekoder sprzętowy, a obrazu nie potrafi (MSE dekoduje ten
+          sam strumień inną drogą). */
+  function armPictureWatchdog(token) {
+    clearPictureWatchdog();
+    if (typeof token !== "number") token = state.engineToken;
+    state.pictureTimer = setTimeout(function () {
+      state.pictureTimer = null;
+      if (!state.watchChannel || state.engineToken !== token) return;
+      if (videoHasPicture($("video"))) return;
+      if (!state.pictureRetried && applyVideoLayerFix(true)) {
+        state.pictureRetried = true;
+        retryCurrentEntry(t("err_no_picture"));
+        return;
+      }
+      /* Jedna runda po wszystkich sposobach odtwarzania wystarczy: powtarzanie
+         tego samego dekodera na tym samym strumieniu nic nowego nie pokaże. */
+      nextSourceEntry(t("err_no_picture"), 0, false, 0, t("err_no_picture_hint"));
+    }, PICTURE_TIMEOUT);
+  }
+
+  /* Powtórzenie TEGO SAMEGO wpisu kolejki (bez przesuwania się do następnego
+     sposobu odtwarzania) — używane po zmianie w warstwie obrazu. */
+  function retryCurrentEntry(message) {
+    var entry = state.sources[state.sourceIndex];
+    if (!entry) return;
+    if (message) showPlayerError(message);
+    clearTimeout(state.retryTimer);
+    state.retryTimer = setTimeout(function () {
+      state.retryTimer = null;
+      if (!state.watchChannel) return;
+      startSourceEntry(entry);
+    }, 400);
+  }
+
+  function clearPictureWatchdog() {
+    clearTimeout(state.pictureTimer);
+    state.pictureTimer = null;
+  }
+
+  /* Pierwsza klatka obrazu = odtwarzanie naprawdę działa. Zdejmujemy wtedy
+     budzik obrazu i zapamiętujemy sposób odtwarzania, który obraz przyniósł. */
+  function notePicture() {
+    if (!videoHasPicture($("video"))) return false;
+    clearPictureWatchdog();
+    rememberEngine(state.engine);
+    return true;
+  }
+
+  /* Warstwa obrazu dla Androida, na którym gra sam dźwięk: WebView rysuje
+     klatki w osobnej warstwie compositingu, więc wymuszamy ją jawnie. Zmiana
+     jest nieszkodliwa dla dekoderów, które radzą sobie bez niej, ale stan
+     zapisujemy w ustawieniach — inaczej ekran mrugałby przy każdym włączeniu
+     aplikacji. Zwracamy true tylko wtedy, gdy naprawdę coś zmieniliśmy: dzięki
+     temu budzik obrazu wie, czy jest sens powtarzać próbę. */
+  function applyVideoLayerFix(on) {
+    var want = on !== false;
+    var changed = settings.videoLayerFix !== want;
+    /* Klasę ustawiamy zawsze (także przy starcie aplikacji), a zapis i wynik
+       „czy coś się zmieniło” tylko wtedy, gdy naprawdę zmieniamy stan. */
+    if (document.body) document.body.classList.toggle("video-layer-fix", want);
+    if (!changed) return false;
+    settings.videoLayerFix = want;
+    saveSettings();
+    return true;
+  }
+
+  /* Udany sposób odtwarzania pamiętamy między kanałami (patrz preferEngine).
+     Zapis jest odroczony, bo to zwykłe ustawienie — nie może zatrzymać obrazu. */
+  function rememberEngine(engine) {
+    var hint = engine === "mse" || engine === "hls" ? engine : "native";
+    if (settings.engineHint === hint) return;
+    settings.engineHint = hint;
+    saveSettings();
   }
 
   function clearStartWatchdog() {
@@ -3531,22 +3736,33 @@
 
   /* Przejście do następnego sposobu odtwarzania. Po wyczerpaniu całej listy
      rusza kolejna runda prób (ustawienie „Próby ponownego uruchomienia”), więc
-     kanał ma realną szansę podnieść się po chwilowym błędzie serwera. */
-  function nextSourceEntry(message, delay, silent) {
+     kanał ma realną szansę podnieść się po chwilowym błędzie serwera.
+     `maxCycles` ogranicza liczbę rund (używa go brak obrazu — patrz
+     armPictureWatchdog — bo powtarzanie tego samego dekodera nic nie da),
+     a `finalHint` to dodatkowe zdanie pokazywane dopiero na końcu, gdy kanału
+     nie udało się uruchomić. */
+  function nextSourceEntry(message, delay, silent, maxCycles, finalHint) {
     if (!state.watchChannel) return;
     var attempts = parseInt(settings.retryAttempts, 10) || 0;
+    var custom = typeof maxCycles === "number";
+    var limit = custom ? maxCycles : attempts;
 
     state.sourceIndex++;
     if (state.sourceIndex >= state.sources.length) {
       state.sourceIndex = 0;
       state.cycle++;
     }
-    if (state.cycle > attempts) {
-      showPlayerError(
-        (message ? message + "\n" : "") +
-        (attempts ? t("retry_fail", { total: attempts }) : t("retry_off")) +
-        "\n" + t("back_hint")
-      );
+    if (state.cycle > limit) {
+      var lines = [];
+      if (message) lines.push(message);
+      if (finalHint) lines.push(finalHint);
+      /* Przy własnym limicie (brak obrazu) liczba „prób ponowienia” nic nie
+         znaczy — jest jedna runda po sposobach odtwarzania. */
+      if (!custom || limit > 0) {
+        lines.push(attempts ? t("retry_fail", { total: attempts }) : t("retry_off"));
+      }
+      lines.push(t("back_hint"));
+      showPlayerError(lines.join("\n"));
       return;
     }
 
@@ -4238,10 +4454,8 @@
          albo wiersz przy górnej krawędzi), zamiast skakać na początek listy */
       var entry = guideEntryBlock();
       if (entry) {
-        try { entry.focus(); } catch (error) { /* bez fokusu też da się kliknąć */ }
-        try { entry.scrollIntoView({ block: "nearest" }); }
-        catch (error2) { entry.scrollIntoView(false); }
-        guideEnsureAhead();
+        focusKeepScroll(entry);
+        revealGuideBlock(entry);
       }
       return;
     }
@@ -4269,11 +4483,13 @@
     }
 
     if (best) {
-      best.focus();
-      best.scrollIntoView(false);
-      /* przy dolnej krawędzi widoku dokładamy kolejne wiersze — inaczej fokus
-         stanąłby na ostatnim kanale z pomyślanej porcji */
-      guideEnsureAhead();
+      focusKeepScroll(best);
+      /* Dosuwamy siatkę tylko o brakujący kawałek. scrollIntoView(false)
+         wyrównywał kafelek do samego dołu, więc każde ▲ ▼ robiło duży,
+         nierówny skok, a kafelek przy górnej krawędzi chował się pod
+         przyklejoną osią czasu. revealGuideBlock() dokłada też wiersze
+         przy dolnej krawędzi widoku. */
+      revealGuideBlock(best);
       return;
     }
     /* nad górnym wierszem nie ma już programu: ▲ wraca do nagłówka */
@@ -4335,9 +4551,20 @@
   /* Każda zmiana dnia albo godziny przerysowuje siatkę, ale wiersz z fokusem
      zostaje na swoim miejscu — po przewinięciu godzin nadal widać ten sam
      kanał, tylko w innym czasie. */
-  function guideRedraw() {
+  function guideRedraw(shift) {
     var rowIndex = guideFocusRowIndex();
     var inGrid = rowIndex >= 0;
+    /* Moment programu i miejsce wiersza pod fokusem zapamiętujemy PRZED
+       przerysowaniem — po nim lista kafelków jest już nowa i nie ma czego
+       spytać. Bez tego „Dzień ›” i ◀ ▶ zostawiały wiersz na miejscu, ale
+       przeskakiwały na pierwszy program w kanale. */
+    var focusTime = guideFocusTime();
+    var keepOffset = guideRowViewportOffset();
+    /* Przeskok okna („Wczoraj”, „Dzień ›”) mija się z momentem programu o całą
+       dobę, więc ten sam moment bezwzględny nie trafi już w żaden kafelek.
+       Drugi cel to ta sama godzina nowego dnia — po przeskoku o dobę fokus
+       zostaje na tym samym programie i w tej samej kolumnie ekranu. */
+    var focusSame = focusTime && shift ? focusTime + shift : 0;
     if (!inGrid) {
       /* fokus jest poza siatką (np. na przyciskach dnia) — nie zabieramy go
          z nagłówka, tylko zostawiamy widok na tym kanale, który był na ekranie;
@@ -4354,13 +4581,25 @@
     else if (rowIndex === 0) guide.anchor = 0;
     renderGuide();
     guide.anchor = -1;
-    if (inGrid) focusGuideRowBlock(rowIndex);
+    if (inGrid) focusGuideRowBlock(rowIndex, focusTime, focusSame);
+    /* wiersz z fokusem wraca w to samo miejsce na ekranie — bez tego siatka
+       drgała przy każdej zmianie dnia albo godziny */
+    guideRestoreRowOffset(keepOffset);
+  }
+
+  /* Zmiana okna czasu (◀ ▶, „Dzień ›”, „Wczoraj”, data, godzina). O tym, gdzie
+     wyląduje fokus, decyduje sam przeskok, więc przekazujemy go dalej: przy
+     ◀ ▶ o godzinę program zostaje pod palcem dzięki temu samemu momentowi,
+     a przy przeskoku o dobę trzeba tej samej godziny nowego dnia. */
+  function guideSetWindow(start) {
+    var shift = start - guide.windowStart;
+    guide.windowStart = start;
+    guideRedraw(shift);
   }
 
   /* przewijanie o cały dzień — zachowuje wybraną godzinę */
   function guideShiftDays(dir) {
-    guide.windowStart += dir * 24 * 3600000;
-    guideRedraw();
+    guideSetWindow(guide.windowStart + dir * 24 * 3600000);
   }
 
   /* Przewijanie osi czasu o godzinę (◀ ▶) — działa w obie strony bez żadnego
@@ -4368,9 +4607,8 @@
      i „zatykały się” na skraju widocznego zakresu, więc nie dało się cofnąć
      dalej niż jedno okno (3 godziny). Fokus zostaje na tym samym kanale. */
   function guidePan(hours) {
-    guide.windowStart += hours * 3600000;
-    guide.windowStart -= guide.windowStart % 3600000;
-    guideRedraw();
+    var next = guide.windowStart + hours * 3600000;
+    guideSetWindow(next - (next % 3600000));
   }
 
   /* skok do dnia względem dziś (0 = dziś, -1 = wczoraj, -2 = przedwczoraj)
@@ -4379,14 +4617,12 @@
     var now = new Date();
     var hour = new Date(guide.windowStart).getHours();
     var target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset, hour, 0, 0, 0);
-    guide.windowStart = target.getTime();
-    guideRedraw();
+    guideSetWindow(target.getTime());
   }
 
   function guideGoToday() {
     var now = Date.now();
-    guide.windowStart = now - (now % 3600000) - 3600000;
-    guideRedraw();
+    guideSetWindow(now - (now % 3600000) - 3600000);
   }
 
   function guideGoToDate(dateStr) {
@@ -4394,8 +4630,7 @@
     if (!m) return;
     var d = new Date(guide.windowStart);
     d.setFullYear(+m[1], +m[2] - 1, +m[3]);
-    guide.windowStart = d.getTime() - (d.getTime() % 3600000);
-    guideRedraw();
+    guideSetWindow(d.getTime() - (d.getTime() % 3600000));
   }
 
   function guideGoToTime(timeStr) {
@@ -4403,8 +4638,7 @@
     if (!m) return;
     var d = new Date(guide.windowStart);
     d.setHours(+m[1], +m[2] || 0, 0, 0);
-    guide.windowStart = d.getTime();
-    guideRedraw();
+    guideSetWindow(d.getTime());
   }
 
   /* Rysuje siatkę programu TV: oś czasu, widoczne wiersze z zapasem i linię
@@ -4702,8 +4936,24 @@
     block.className = "guide-program";
     var s = Math.max(p.start, start);
     var e = Math.min(p.end, end);
-    block.style.left = ((s - start) / 3600000 * guide.hourWidth) + "px";
-    block.style.width = Math.max(44, ((e - s) / 3600000 * guide.hourWidth) - 6) + "px";
+    /* Kafelek nie może wystawać za koniec osi. Wystający kawałek (krótki
+       program na skraju okna) robił siatce poziomy pasek przewijania, a wtedy
+       przeglądarka dosuwała widok do kafelka z fokusem: cała siatka uciekała
+       w lewo, a fokus lądował na uciętej kolumnie. Skrajny kafelek jest więc
+       dociągany do końca osi, zachowując najmniejszą czytelną szerokość. */
+    var laneWidth = guide.hours * guide.hourWidth;
+    var left = (s - start) / 3600000 * guide.hourWidth;
+    var width = Math.max(44, ((e - s) / 3600000 * guide.hourWidth) - 6);
+    if (left + width > laneWidth) {
+      width = Math.max(44, laneWidth - left);
+      left = Math.max(0, laneWidth - width);
+    }
+    block.style.left = left + "px";
+    block.style.width = width + "px";
+    /* Czas trwania programu bez przycięcia do okna: po przewinięciu godzin
+       fokus wraca na ten sam moment programu, a nie na pierwszy kafelek. */
+    block.setAttribute("data-start", String(p.start));
+    block.setAttribute("data-end", String(p.end));
 
     var isPast = p.end <= now;
     var isNow = p.start <= now && now < p.end;
@@ -4772,18 +5022,131 @@
     return best || blocks[0];
   }
 
-  /* fokus na pierwszym dostępnym programie wskazanego wiersza — po przewinięciu
-     dnia albo godzin ten sam kanał zostaje pod palcem */
-  function focusGuideRowBlock(index) {
+  /* ---------------- kafelek pod fokusem a oś czasu ----------------
+     Siatka przewija się tylko w pionie, a w poziomie widok przesuwa się
+     wyłącznie ◀ ▶ (o godzinę). Fokus pilnujemy sami, po współrzędnych:
+     silnik po sfokusowaniu kafelka dosuwa go do widoku także w poziomie
+     i wtedy cała siatka — razem z nazwami kanałów — uciekała w lewo. */
+
+  /* Fokus bez przewijania: przewijanie siatki robimy sami (patrz
+     revealGuideBlock), więc silnik nie może nas w tym wyręczyć */
+  function focusKeepScroll(element) {
+    if (!element || !element.focus) return;
+    try { element.focus({ preventScroll: true }); }
+    catch (error) { try { element.focus(); } catch (error2) { /* bez fokusu też da się kliknąć */ } }
+  }
+
+  /* Dosuwa siatkę o brakujący kawałek: kafelek ma być widoczny nad
+     przyklejoną osią czasu i nad dolną krawędzią — ani piksela więcej.
+     scrollIntoView() wyrównywał kafelek do samego dołu (duże, nierówne skoki
+     co ▲ ▼) i w dodatku ruszał widok w poziomie. */
+  function revealGuideBlock(block) {
+    var grid = $("guideGrid");
+    if (!grid || !block || !grid.clientHeight) return;
+    var head = guideRowsOffset();                       /* wysokość przyklejonej osi czasu */
+    var box = grid.getBoundingClientRect();
+    var rect = block.getBoundingClientRect();
+    var top = rect.top - box.top;
+    var bottom = rect.bottom - box.top;
+    var view = grid.clientHeight;
+    var up = head + 2 - top;                            /* ile brakuje u góry */
+    var down = bottom - (view - 2);                     /* ile wystaje dołem */
+    if (up > 0 && down > 0) grid.scrollTop += (up <= down ? -up : down);
+    else if (up > 0) grid.scrollTop -= up;
+    else if (down > 0) grid.scrollTop += down;
+    guideEnsureAhead();
+  }
+
+  /* Moment programu pod fokusem (środek kafelka) — po przewinięciu osi
+     wracamy z fokusem na ten sam moment, a nie na początek wiersza */
+  function guideFocusTime() {
+    var active = document.activeElement;
+    if (!active || !active.getAttribute) return 0;
+    var start = parseInt(active.getAttribute("data-start"), 10);
+    if (!isFinite(start)) return 0;
+    var end = parseInt(active.getAttribute("data-end"), 10);
+    if (!isFinite(end) || end <= start) return start;
+    return start + (end - start) / 2;
+  }
+
+  /* Program, w którym mieści się podany moment (null, gdy w tym kanale nie ma
+     takiego programu — wtedy o fokusie decyduje wołający) */
+  function guideBlockContaining(row, time) {
+    if (!time) return null;
+    var blocks = row.querySelectorAll(".guide-program:not([disabled])");
+    for (var i = 0; i < blocks.length; i++) {
+      var start = parseInt(blocks[i].getAttribute("data-start"), 10);
+      var end = parseInt(blocks[i].getAttribute("data-end"), 10);
+      if (!isFinite(start) || !isFinite(end)) continue;
+      if (time >= start && time < end) return blocks[i];
+    }
+    return null;
+  }
+
+  /* Program obejmujący podany moment; przy przerwie w EPG — najbliższy.
+     Bez zapamiętanego momentu zostaje dotychczasowe zachowanie: to, co leci
+     teraz, a gdy takiego nie ma — pierwszy program w kanale. */
+  function guideBlockAtTime(row, time) {
+    var blocks = row.querySelectorAll(".guide-program:not([disabled])");
+    if (!blocks.length) return null;
+    if (!time) {
+      var live = row.querySelector(".guide-program.now:not([disabled])");
+      return live || blocks[0];
+    }
+    var containing = guideBlockContaining(row, time);
+    if (containing) return containing;
+    var best = blocks[0];
+    var bestGap = Infinity;
+    for (var i = 0; i < blocks.length; i++) {
+      var start = parseInt(blocks[i].getAttribute("data-start"), 10);
+      var end = parseInt(blocks[i].getAttribute("data-end"), 10);
+      if (!isFinite(start) || !isFinite(end)) continue;
+      var gap = time < start ? start - time : (time >= end ? time - end : 0);
+      if (gap < bestGap) { bestGap = gap; best = blocks[i]; }
+    }
+    return best;
+  }
+
+  /* fokus na programie wskazanego wiersza — po przewinięciu dnia albo godzin
+     ten sam kanał i ten sam moment programu zostają pod palcem */
+  function focusGuideRowBlock(index, time, sameTime) {
     var wrap = $("guideRows");
     var rows = wrap ? wrap.querySelectorAll(".guide-row") : [];
     var local = index - guide.winStart;
     if (local < 0 || local >= rows.length) return;
-    var block = rows[local].querySelector(".guide-program.now:not([disabled])") ||
-      rows[local].querySelector(".guide-program:not([disabled])");
+    var row = rows[local];
+    /* Najpierw ten sam moment (◀ ▶ o godzinę: program jedzie z osią i zostaje
+       pod palcem), potem ta sama godzina nowego dnia („Wczoraj”, „Dzień ›” —
+       po przeskoku o dobę moment bezwzględny jest już poza oknem), a na końcu
+       najbliższy program: po przerwie w EPG lepiej trafić w sąsiedztwo niż
+       nie trafić wcale. */
+    var block = guideBlockContaining(row, time) || guideBlockContaining(row, sameTime) ||
+      guideBlockAtTime(row, time || sameTime);
     if (!block) return;
-    try { block.focus(); } catch (error) { /* bez fokusu też da się kliknąć */ }
+    focusKeepScroll(block);
     guideEnsureAhead();
+  }
+
+  /* Jak daleko od górnej krawędzi siatki leży wiersz z fokusem (w pikselach
+     ekranu) — tyle wystarczy, żeby po przerysowaniu odtworzyć to samo miejsce */
+  function guideRowViewportOffset() {
+    var grid = $("guideGrid");
+    var active = document.activeElement;
+    var row = active && active.closest ? active.closest(".guide-row") : null;
+    if (!grid || !row) return null;
+    return row.getBoundingClientRect().top - grid.getBoundingClientRect().top;
+  }
+
+  /* przywraca wiersz z fokusem w to samo miejsce na ekranie (o ile przerysowanie
+     przesunęło go o więcej niż piksel) */
+  function guideRestoreRowOffset(offset) {
+    var grid = $("guideGrid");
+    if (!grid || offset === null || offset === undefined) return;
+    var now = guideRowViewportOffset();
+    if (now === null || !isFinite(now)) return;
+    var delta = now - offset;
+    if (Math.abs(delta) < 1.5) return;
+    grid.scrollTop = Math.max(0, grid.scrollTop + delta);
   }
 
   /* Fokus (i przewinięcie siatki) na oglądanym kanale — EPG otwarte z paska
@@ -4797,9 +5160,8 @@
       var block = rows[i].querySelector(".guide-program.now:not([disabled])") ||
         rows[i].querySelector(".guide-program:not([disabled])");
       if (block) {
-        try { block.focus(); } catch (error) { /* bez fokusu też da się kliknąć */ }
-        try { block.scrollIntoView({ block: "nearest", inline: "center" }); }
-        catch (error2) { block.scrollIntoView(false); }
+        focusKeepScroll(block);
+        revealGuideBlock(block);
       }
       return;
     }
@@ -6213,6 +6575,9 @@
   applyTranslations();
   buildChoiceRows();
   applyUiMode();
+  /* Naprawa warstwy obrazu (patrz applyVideoLayerFix) włącza się u tych, którym
+     naprawdę pomogła — u pozostałych klasa nie pojawia się wcale. */
+  applyVideoLayerFix(settings.videoLayerFix);
 
   var versionEl = $("appVersion");
   if (versionEl) versionEl.textContent = "v" + APP_VERSION;

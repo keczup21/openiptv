@@ -34,11 +34,72 @@ function extractTag(block, tagName) {
   return out;
 }
 
+/* ---------------- rozpakowanie i zamiana na tekst (w tym wątku) -------------
+
+   Pobrany plik EPG to często kilkudziesięciomegabajtowy GZIP, a po rozpakowaniu
+   nawet kilkaset MB. Rozpakowanie (pako) i zamiana bajtów na tekst biegły
+   wcześniej na głównym wątku — w tym czasie przeglądarka nie rysowała NICZEGO,
+   więc obraz i pilot zamarzały na kilka sekund w trakcie wczytywania EPG.
+   Teraz te same bajty rozpakowuje i dekoduje ten wątek, a na ekran idzie tylko
+   gotowa lista programów. */
+
+function isGzip(bytes) {
+  return bytes.length > 1 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+}
+
+function decodeText(bytes, encoding) {
+  if (typeof TextDecoder !== "undefined") {
+    try {
+      return new TextDecoder(encoding).decode(bytes);
+    } catch (error) {
+      /* nieznany kodek — zostaje UTF-8 */
+    }
+  }
+  var out = "";
+  for (var i = 0; i < bytes.length; i++) out += String.fromCharCode(bytes[i]);
+  return out;
+}
+
+/* dekodowanie XMLTV z obsługą BOM (UTF-8 oraz UTF-16LE/BE) */
+function decodeXmlBytes(bytes) {
+  if (bytes.length > 1) {
+    if (bytes[0] === 0xff && bytes[1] === 0xfe) return decodeText(bytes, "utf-16le");
+    if (bytes[0] === 0xfe && bytes[1] === 0xff) return decodeText(bytes, "utf-16be");
+  }
+  if (bytes.length > 2 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    return decodeText(bytes.subarray(3), "utf-8");
+  }
+  return decodeText(bytes, "utf-8");
+}
+
+/* lib/pako.min.js leży obok tego pliku (ta sama biblioteka, którą ładuje
+   index.html), ale wątek nie widzi skryptów ze strony — dociągamy ją raz,
+   dopiero gdy bajty naprawdę są GZIP-em. Adres liczy się względem adresu
+   wątku, więc ścieżka jest ta sama co na stronie. */
+function ensurePako() {
+  if (self.pako) return self.pako;
+  try { importScripts("lib/pako.min.js"); } catch (error) { /* np. brak pliku */ }
+  return self.pako;
+}
+
+function textFromBuffer(buffer) {
+  var bytes = new Uint8Array(buffer || []);
+  if (!bytes.length) return "";
+  if (isGzip(bytes)) {
+    var pako = ensurePako();
+    if (!pako || !pako.ungzip) throw new Error("Brak biblioteki rozpakowującej GZIP.");
+    bytes = pako.ungzip(bytes);
+  }
+  return decodeXmlBytes(bytes).replace(/^\uFEFF/, "");
+}
+
 self.onmessage = function (event) {
   var data = event.data || {};
-  var text = data.text || "";
   var daysBack = data.daysBack || 7;
   try {
+    /* tekst z wyboru pliku albo surowe bajty z pobrania — jedne i drugie
+       obsługuje ten sam parser */
+    var text = data.text ? String(data.text) : textFromBuffer(data.buffer);
     var now = Date.now();
     var from = now - 86400000 * daysBack;
     var to = now + 86400000 * 2;
