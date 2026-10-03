@@ -218,7 +218,7 @@ o nazwie `.xml` też się rozpakuje.
 ## Pobieranie
 
 Gotowe paczki (`.apk` i `.ipk`) leżą w
-[wydaniach](https://github.com/keczup21/openiptv/releases). Każde wydanie ma dwa
+[wydaniach](https://github.com/keczup21/teleiptv/releases). Każde wydanie ma dwa
 pliki, a `<wersja>` w nazwie to numer z `package.json`:
 
 | Plik | System |
@@ -395,20 +395,19 @@ Strona jest przygotowana pod wyszukiwarki:
   odbiorcy), a `og.png`/`icon.png` to PNG, bo serwisy społecznościowe nie
   czytają SVG.
 
-Żeby strona była widoczna w Google, po stronie GitHuba trzeba jeszcze:
+Repozytorium nazywa się `teleiptv`, a strona projektu stoi na GitHub Pages pod
+`https://keczup21.github.io/teleiptv/`. Ten adres jest wpisany w `docs/index.html`
+(`canonical`, `og:url`, `og:image`, `twitter:image` i dane `application/ld+json`),
+w `docs/robots.txt`, w `docs/sitemap.xml` oraz w `UPDATE_REPO` w `www/app.js`
+(sprawdzanie aktualizacji na webOS chodzi przez natywny serwis, który nie podąża
+za przekierowaniami). Po kolejnej zmianie nazwy repozytorium trzeba go podmienić
+w tych wszystkich miejscach.
 
-1. włączyć **Pages** (Settings → Pages → Branch: `main`, folder `/docs`),
-2. dodać stronę w [Google Search Console](https://search.google.com/search-console)
-   i zgłosić `sitemap.xml`,
-3. zmienić nazwę repozytorium na `teleiptv` (Settings → General → Repository
-   name). GitHub przekierowuje stare adresy, więc dotychczasowe linki działają
-   dalej, ale po zmianie nazwy trzeba podmienić adres strony
-   `https://keczup21.github.io/openiptv/` w `docs/index.html` (`canonical`,
-   `og:url`, `og:image`, `twitter:image` i adresy w `application/ld+json`),
-   w `docs/robots.txt` oraz w `docs/sitemap.xml`. To samo warto zrobić
-   z `UPDATE_REPO` w `www/app.js` (`keczup21/openiptv` → `keczup21/teleiptv`):
-   sprawdzanie aktualizacji na webOS chodzi przez natywny serwis, który nie
-   podąża za przekierowaniami.
+Żeby strona trafiła do Google, zostaje dodanie jej w
+[Google Search Console](https://search.google.com/search-console) i zgłoszenie
+`docs/sitemap.xml`. Bez tego wyszukiwarka dowiaduje się o stronie tylko z linków
+z zewnątrz, a tych na razie nie ma — dlatego po nazwie „TeleIPTV” nic jeszcze
+nie znajduje.
 
 ## Testy
 

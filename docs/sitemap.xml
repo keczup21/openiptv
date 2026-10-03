@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- TeleIPTV — mapa strony. Jedna strona (docs/index.html), więc jedno
-     adres. Po zmianie nazwy repozytorium podmień <loc> i <lastmod>. -->
+<!-- TeleIPTV — mapa strony. Jedna strona (docs/index.html), więc jeden adres.
+     Adres w <loc> musi się zgadzać z nazwą repozytorium (dziś teleiptv). -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://keczup21.github.io/openiptv/</loc>
+    <loc>https://keczup21.github.io/teleiptv/</loc>
     <lastmod>2026-10-03</lastmod>
   </url>
 </urlset>
