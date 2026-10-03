@@ -791,10 +791,10 @@ check("lista otwarta z odtwarzacza wraca potem do listy kanalow",
    sesji multimediów, zwolnienie klawisza i most natywny. */
 check("kody klawiszy multimedialnych obu platform",
   src.indexOf("var MEDIA_KEY_TOGGLE = [85, 126, 179, 415];") > 0 &&
-  src.indexOf("var MEDIA_KEY_PAUSE = [86, 93, 127];") > 0 &&
+  src.indexOf("var MEDIA_KEY_PAUSE = [86, 93, 127, 178];") > 0 &&
   src.indexOf('if (name === "MediaPlayPause" || name === "MediaPlay") return "toggle";') > 0);
 check("play/pauza dziala takze bez keydown (keyup) i przez most natywny",
-  src.indexOf("if (mediaKeyHandledRecently()) return;") > 0 &&
+  src.indexOf("if (media && !mediaKeyHandledRecently()) {") > 0 &&
   src.indexOf("window.__openiptvKey = function (code, name)") > 0 &&
   src.indexOf("runMediaKey(media);") > 0);
 check("sesja multimediow rejestruje akcje pilota (Android TV / Fire TV)",
@@ -842,6 +842,32 @@ check("kolejne nacisniecia pilota sumuja sie w jednym wpisie",
   src.indexOf("now - state.seekAt <= SEEK_GRACE;") > 0);
 check("pasek odtwarzacza odswieza wpis razem z reszta wskazan",
   src.indexOf("updateOsdProgress();\n    refreshSeekNotice();") > 0);
+
+/* --- 21. przewijanie z pilota: warianty klawiszy ⏪ ⏩ ----------------------
+   Jeden przycisk ⏪ / ⏩, a dekodery wysylaja go roznymi kodami: webOS
+   412/417, Android TV i Fire TV 89/90, a czesc pilotow klawisze „poprzedni /
+   nastepny” (88/87, w Chromium 177/176). Bierzemy tez nazwy klawiszy, bo
+   niektore piloty podaja kod 0, oraz zwolnienie klawisza, bo czesc pilotow
+   wysyla przewijanie dopiero na keyup. */
+check("przewijanie zna kody wszystkich pilotow",
+  src.indexOf("var SEEK_BACK_KEYS = [412, 89, 88, 177];") > 0 &&
+  src.indexOf("var SEEK_FORWARD_KEYS = [417, 90, 87, 176];") > 0);
+check("przewijanie zna tez nazwy klawiszy (kod 0 na czesci dekoderow)",
+  src.indexOf("function seekKeyDirection(keyCode, keyName, arrowsSeek)") > 0 &&
+  src.indexOf('if (name === "MediaRewind" || name === "MediaTrackPrevious") return -1;') > 0 &&
+  src.indexOf('if (name === "MediaFastForward" || name === "MediaTrackNext") return 1;') > 0);
+check("strzalki przewijaja tylko przy wlaczonym ustawieniu",
+  src.indexOf("if (arrowsSeek && keyCode === 37) return -1;") > 0 &&
+  src.indexOf("if (arrowsSeek && keyCode === 39) return 1;") > 0 &&
+  src.indexOf("var seekDirection = seekKeyDirection(key, event.key, settings.dpadSeek);") > 0);
+check("most natywny przewija ta sama droga co klawiatura",
+  src.indexOf("var seekDirection = seekKeyDirection(code, name, settings.dpadSeek);") > 0);
+check("klawisz wyslany dopiero na zwolnieniu tez przewija - i tylko raz",
+  src.indexOf("var seekKeyDown = {};") > 0 &&
+  src.indexOf("seekKeyDown[key] = true;") > 0 &&
+  src.indexOf("seekKeyDown[code] = true;") > 0 &&
+  src.indexOf("if (seekKeyDown[seekCode]) { delete seekKeyDown[seekCode]; return; }") > 0 &&
+  src.indexOf("var seekDirection = seekKeyDirection(seekCode, event.key, false);") > 0);
 
 console.log("");
 if (fails) { console.log("BLEDY: " + fails); process.exit(1); }

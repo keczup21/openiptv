@@ -86,6 +86,12 @@ obsługuje kody i nazwy tych klawiszy, rejestruje akcje w sesji multimediów,
 oddaje go stronie, gdy na ekranie jest odtwarzacz — dlatego play/pauza działa
 także na pilotach, na których wcześniej milczał.
 
+Przewijanie ma tę samą drogę: `⏪` `⏩` pilota rozpoznajemy po kodach i nazwach
+(webOS `412`/`417`, Android TV i Fire TV `89`/`90`, a na części pilotów klawisze
+„poprzedni / następny” `87`/`88`), więc skok działa też na pilotach, które
+wysyłają przewijanie dopiero na zwolnieniu klawisza — jedno naciśnięcie liczy
+się jednak raz.
+
 Pasek na dole obrazu pokazuje to, co da się zrobić w danym momencie:
 `Pauza`/`Wznów`, `Od początku`, `◀ Poprzedni` i `Następny ▶` (w archiwum),
 `EPG`, `Na żywo` (gdy obraz nie jest na żywo) i `Wycisz`. Menu opcji kanału

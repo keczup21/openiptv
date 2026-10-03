@@ -21,7 +21,7 @@
      był natychmiastowy i nie przepisywał za każdym razem megabajtów danych. */
   var BLOBS_KEY = "openiptvBlobs";
   var BLOB_FIELDS = ["playlistFileText", "epgFileText", "playlistFileName", "epgFileName"];
-  var APP_VERSION = "1.21.6";
+  var APP_VERSION = "1.21.7";
   var SCHEMA_VERSION = 4;
 
   /* „Ostatnio oglądane”: kanał trafia na listę po 10 s oglądania,
@@ -5056,7 +5056,7 @@
      które na innych platformach znaczą coś innego (19 to na Androidzie ▲). */
 
   var MEDIA_KEY_TOGGLE = [85, 126, 179, 415];   // ⏵‖ oraz samo ⏵
-  var MEDIA_KEY_PAUSE = [86, 93, 127];          // ⏹ oraz samo ⏸
+  var MEDIA_KEY_PAUSE = [86, 93, 127, 178];     // ⏹ oraz samo ⏸ (178 = Chromium)
 
   function mediaKeyAction(keyCode, keyName) {
     var name = String(keyName || "");
@@ -5072,6 +5072,34 @@
     if (action === "toggle") togglePlayPause();
     else if (action === "pause") pausePlayback();
   }
+
+  /* -----------------  PILOT: PRZEWIJANIE (⏪ ⏩ I ICH WARIANTY)  -----------------
+     Jeden przycisk ⏪ / ⏩, a znowu kilka kodów między dekoderami: webOS 412/417,
+     Android TV i Fire TV 89/90 (KEYCODE_MEDIA_REWIND / FAST_FORWARD), a część
+     pilotów wysyła zamiast przewijania klawisze „poprzedni / następny” (88/87,
+     w Chromium 177/176). Część pilotów podaje przy tym samą nazwę klawisza
+     („MediaRewind”) albo kod 0, więc bierzemy pod uwagę jedno i drugie.
+     Strzałki ◀ ▶ przewijają tylko przy włączonym ustawieniu „◀ ▶ przewija”. */
+
+  var SEEK_BACK_KEYS = [412, 89, 88, 177];      // ⏪ oraz ⏮ (webOS / Android / Chromium)
+  var SEEK_FORWARD_KEYS = [417, 90, 87, 176];   // ⏩ oraz ⏭
+
+  /* kierunek skoku dla klawisza pilota; 0 = to nie jest klawisz przewijania */
+  function seekKeyDirection(keyCode, keyName, arrowsSeek) {
+    var name = String(keyName || "");
+    if (name === "MediaRewind" || name === "MediaTrackPrevious") return -1;
+    if (name === "MediaFastForward" || name === "MediaTrackNext") return 1;
+    if (SEEK_BACK_KEYS.indexOf(keyCode) >= 0) return -1;
+    if (SEEK_FORWARD_KEYS.indexOf(keyCode) >= 0) return 1;
+    if (arrowsSeek && keyCode === 37) return -1;
+    if (arrowsSeek && keyCode === 39) return 1;
+    return 0;
+  }
+
+  /* Klawisze przewijania, które przyszły na keydown. Część pilotów wysyła
+     przewijanie dopiero na zwolnieniu klawisza — wtedy skok robi keyup, ale gdy
+     keydown już go zrobił, zwolnienie nie może dodać drugiego kroku. */
+  var seekKeyDown = {};
 
   /* Część dekoderów oddaje klawisze multimedialne dopiero na zwolnieniu
      klawisza, a część nie oddaje ich wcale — wtedy trafiają do nas mostem
@@ -5117,12 +5145,14 @@
 
       /* ◀ ▶ — przewijanie obrazu (na kanale na żywo ◀ wchodzi w catch-up o krok,
          a ▶ na zatrzymanym obrazie wznawia od miejsca pauzy). ⏪ ⏩ pilota
-         (webOS 412/417, Android 89/90) przewijają zawsze, a strzałki tylko przy
-         włączonym ustawieniu „◀ ▶ przewija” — inaczej wracają do nawigacji. */
-      if (key === 412 || key === 417 || key === 89 || key === 90 ||
-          ((key === 37 || key === 39) && settings.dpadSeek)) {
+         (webOS 412/417, Android 89/90, „poprzedni / następny” 88/87) przewijają
+         zawsze, a strzałki tylko przy włączonym ustawieniu „◀ ▶ przewija” —
+         inaczej wracają do nawigacji (patrz seekKeyDirection). */
+      var seekDirection = seekKeyDirection(key, event.key, settings.dpadSeek);
+      if (seekDirection) {
         event.preventDefault();
-        seekBy(key === 412 || key === 89 || key === 37 ? -1 : 1);
+        seekKeyDown[key] = true;
+        seekBy(seekDirection);
         return;
       }
       if (key === 37 || key === 39) {
@@ -5274,11 +5304,18 @@
   document.addEventListener("keyup", function (event) {
     if (event.keyCode === 13 || event.keyCode === 23 || event.keyCode === 66) releaseOk();
     if ($("playerScreen").classList.contains("hidden")) return;
-    if (mediaKeyHandledRecently()) return;
     var media = mediaKeyAction(event.keyCode, event.key);
-    if (!media) return;
-    state.mediaKeyAt = Date.now();
-    runMediaKey(media);
+    if (media && !mediaKeyHandledRecently()) {
+      state.mediaKeyAt = Date.now();
+      runMediaKey(media);
+      return;
+    }
+    /* przewijanie wysłane tylko na zwolnieniu klawisza (bez keydown): gdy
+       naciśnięcie już zrobiło skok, zwolnienie tylko je kończy */
+    var seekCode = event.keyCode;
+    if (seekKeyDown[seekCode]) { delete seekKeyDown[seekCode]; return; }
+    var seekDirection = seekKeyDirection(seekCode, event.key, false);
+    if (seekDirection) seekBy(seekDirection);
   });
 
   /* Most dla natywnej obsługi klawiszy multimedialnych (Android TV / Fire TV).
@@ -5288,8 +5325,10 @@
   window.__openiptvKey = function (code, name) {
     if ($("playerScreen").classList.contains("hidden")) return "";
     /* ⏪ / ⏩ pilota (KEYCODE_MEDIA_REWIND / FAST_FORWARD): przewijanie o krok */
-    if (code === 89 || code === 90) {
-      seekBy(code === 89 ? -1 : 1);
+    var seekDirection = seekKeyDirection(code, name, settings.dpadSeek);
+    if (seekDirection) {
+      seekKeyDown[code] = true;
+      seekBy(seekDirection);
       return "handled";
     }
     var media = mediaKeyAction(code, name);

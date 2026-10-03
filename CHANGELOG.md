@@ -17,6 +17,16 @@ z numerem opisuje akapit wyżej). Opis wydania na GitHubie powstaje z tego wpisu
 `npm run notes` (`scripts/release-notes.js`) bierze z changeloga tylko sekcję
 wydawanej wersji.
 
+## [1.21.7] — 2026-10-03
+
+### Naprawiono
+- **Przewijanie pilota (`⏪` `⏩`) działa na większej liczbie pilotów.** Skok
+  rozpoznajemy nie tylko po kodach webOS (`412`/`417`) i Androida (`89`/`90`),
+  ale też po nazwach klawiszy oraz po klawiszach „poprzedni / następny”
+  (`87`/`88`), którymi część pilotów wysyła przewijanie. Skok dzieje się także
+  wtedy, gdy pilot zgłasza klawisz dopiero na zwolnieniu — i tylko raz, bo jedno
+  naciśnięcie nie może liczyć się podwójnie.
+
 ## [1.21.6] — 2026-10-03
 
 ### Naprawiono
