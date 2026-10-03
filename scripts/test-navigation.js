@@ -810,6 +810,35 @@ check("MainActivity oddaje klawisze multimedialne stronie tylko w odtwarzaczu",
   java.indexOf("public void setPlayerMode(final boolean on)") > 0 &&
   java.indexOf("if (playerMode && isMediaKey(keyCode))") > 0);
 
+/* --- 20. pasek przewijania archiwum („cofnieto / przesunieto o N s”) ----
+   Po skoku w catch-upie dekoder donosi obraz na nowa pozycje i pasek mowil
+   wtedy „Ladowanie strumienia… (LIVE)”, choc obraz byl tylko przesuwany.
+   Teraz pasek opisuje skok, a komunikat o wczytywaniu nazywa silnik. */
+check("pasek ma osobne miejsce na wpis o przewinieciu",
+  html.indexOf('id="playerSeek"') > 0 && html.indexOf('class="player-seek hidden"') > 0 &&
+  css.indexOf(".player-seek {") > 0);
+check("skok w archiwum opisuje krok w sekundach, w obu jezykach",
+  src.indexOf("function markSeek(direction, seconds)") > 0 &&
+  src.indexOf('seek_back: "Cofnięto o {s} s"') > 0 &&
+  src.indexOf('seek_forward: "Przesunięto o +{s} s"') > 0 &&
+  src.indexOf('seek_back: "Back {s} s"') > 0 &&
+  src.indexOf('seek_forward: "Forward +{s} s"') > 0);
+check("opis skoku bierze sie z tego, co sie naprawde przesunelo",
+  src.indexOf("if (moved) markSeek(moved < 0 ? -1 : 1, Math.abs(moved));") > 0 &&
+  src.indexOf("var moved = Math.round(video.currentTime) - Math.round(before);") > 0);
+check("nowe okno catch-up i powrot na zywo nie zostawiaja starego wpisu",
+  src.indexOf("markSeek(-1, seekStep());") > 0 && src.indexOf("clearSeekMark();") > 0 &&
+  src.indexOf("function clearSeekMark()") > 0);
+check("po skoku waiting pokazuje skok, a nie wczytywanie strumienia",
+  src.indexOf("if (seekNotice()) { showOsd(); return; }") > 0 &&
+  src.indexOf("function seekNotice()") > 0 && src.indexOf("var SEEK_GRACE = 6000;") > 0);
+check("komunikat o wczytywaniu nazywa silnik, a nie stan obrazu (LIVE)",
+  src.indexOf("function engineName(engine)") > 0 &&
+  src.indexOf('engine_native: "natywnie"') > 0 &&
+  src.indexOf('showPlayerError(t("osd_buffering") + " (" + engineName(state.engine) + ")");') > 0);
+check("pasek odtwarzacza odswieza wpis razem z reszta wskazan",
+  src.indexOf("updateOsdProgress();\n    refreshSeekNotice();") > 0);
+
 console.log("");
 if (fails) { console.log("BLEDY: " + fails); process.exit(1); }
 console.log("Wszystkie sprawdzenia przeszly.");

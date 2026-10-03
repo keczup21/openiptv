@@ -426,6 +426,18 @@ aside {
 .progress { height: 8px; background: rgba(255,255,255,.16); border-radius: 999px; overflow: hidden; }
 .progress i { display: block; height: 100%; background: var(--grad); width: 0; border-radius: 999px; }
 .player-time { color: var(--muted); font-size: 16px; font-variant-numeric: tabular-nums; }
+/* wpis o przewinięciu archiwum („Cofnięto o 10 s”) — ten sam kolor co plakietka
+   catch-upu, bo dotyczy tego samego: materiału z archiwum, nie kanału na żywo */
+.player-seek {
+  padding: 3px 14px;
+  border-radius: 999px;
+  background: rgba(245,197,24,.16);
+  color: #f5c518;
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .player-error {
   position: absolute;
   left: 50%; top: 50%;

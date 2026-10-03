@@ -17,6 +17,18 @@ z numerem opisuje akapit wyżej). Opis wydania na GitHubie powstaje z tego wpisu
 `npm run notes` (`scripts/release-notes.js`) bierze z changeloga tylko sekcję
 wydawanej wersji.
 
+## [1.21.5] — 2026-10-03
+
+### Naprawiono
+- **Po przewinięciu catch-upu pasek pisze, o ile obraz się przesunął.**
+  Skok w archiwum zmusza dekoder do doniesienia obrazu na nową pozycję, więc
+  odtwarzacz zgłaszał buforowanie i pasek pokazywał „Ładowanie strumienia…
+  (LIVE)” — tak samo jak przy włączaniu kanału. Teraz pasek mówi wprost
+  „Cofnięto o 10 s” albo „Przesunięto o +10 s”: krok z ustawień, a przy
+  krawędzi nagrania tyle, ile naprawdę udało się przesunąć. Komunikat
+  o wczytywaniu obrazu nazywa natomiast silnik odtwarzania („natywnie”,
+  „TS/MSE”, „HLS”) zamiast mylącego „LIVE”.
+
 ## [1.21.4] — 2026-10-03
 
 ### Naprawiono

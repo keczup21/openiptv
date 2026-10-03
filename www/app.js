@@ -21,7 +21,7 @@
      był natychmiastowy i nie przepisywał za każdym razem megabajtów danych. */
   var BLOBS_KEY = "openiptvBlobs";
   var BLOB_FIELDS = ["playlistFileText", "epgFileText", "playlistFileName", "epgFileName"];
-  var APP_VERSION = "1.21.4";
+  var APP_VERSION = "1.21.5";
   var SCHEMA_VERSION = 4;
 
   /* „Ostatnio oglądane”: kanał trafia na listę po 10 s oglądania,
@@ -110,6 +110,12 @@
     engineLoading: false,
     watchChannel: null,
     watchProgram: null,
+    /* przewijanie archiwum: ostatni skok (kierunek i ile sekund). Pasek opisuje
+       nim chwilę, w której dekoder donosi obraz na nową pozycję — bez tego
+       wyglądało to jak wczytywanie strumienia od zera. */
+    seekAt: 0,
+    seekDirection: 0,
+    seekSize: 0,
     osdTimer: null,
     osdTicker: null,
     /* EPG */
@@ -303,11 +309,14 @@
     retry_engine_mse: "Próbuję odtwarzacz TS (MSE)…",
     retry_engine_hls: "Próbuję odtwarzacz HLS…",
     engine_mse: "TS/MSE", engine_hls: "HLS",
+    engine_native: "natywnie",
     epg_none: "Brak danych EPG dla tego kanału.",
     archive_day_today: "Dziś", archive_day_yesterday: "Wczoraj", archive_day_before: "Przedwczoraj",
     archive_limited: "pokazano {shown} z {total}",
     guide_limited: "pokazano {shown} z {total} kanałów (zawęź kategorię)",
     osd_buffering: "Ładowanie strumienia…",
+    seek_back: "Cofnięto o {s} s",
+    seek_forward: "Przesunięto o +{s} s",
     engine_line: "Silnik: {name}",
 
     /* ---------- 1.19.0 ---------- */
@@ -504,11 +513,14 @@
     retry_engine_mse: "Trying the TS player (MSE)…",
     retry_engine_hls: "Trying the HLS player…",
     engine_mse: "TS/MSE", engine_hls: "HLS",
+    engine_native: "native",
     epg_none: "No EPG data for this channel.",
     archive_day_today: "Today", archive_day_yesterday: "Yesterday", archive_day_before: "2 days ago",
     archive_limited: "showing {shown} of {total}",
     guide_limited: "showing {shown} of {total} channels (narrow the category)",
     osd_buffering: "Loading stream…",
+    seek_back: "Back {s} s",
+    seek_forward: "Forward +{s} s",
     engine_line: "Engine: {name}",
 
     /* ---------- 1.19.0 ---------- */
@@ -3146,7 +3158,11 @@
     /* buforowanie: pasek mówi wprost, co się dzieje i który silnik pracuje */
     video.addEventListener("waiting", function () {
       if (!state.currentSource) return;
-      showPlayerError(t("osd_buffering") + " (" + engineLabel(state.engine) + ")");
+      /* chwilę po przewinięciu dekoder donosi obraz na nową pozycję — to nie
+         jest wczytywanie strumienia od zera, więc pasek pokazuje skok
+         („Cofnięto o 10 s”), a nie „Ładowanie strumienia…” */
+      if (seekNotice()) { showOsd(); return; }
+      showPlayerError(t("osd_buffering") + " (" + engineName(state.engine) + ")");
     });
 
     video.addEventListener("timeupdate", updateOsdProgress);
@@ -3226,6 +3242,16 @@
     clearStartWatchdog();
     if (!instance) return;
     try { instance.close(); } catch (error) { /* już zamknięty */ }
+  }
+
+  /* Nazwa silnika dla komunikatów o wczytywaniu obrazu. Osobno od engineLabel,
+     bo tam „LIVE” opisuje stan obrazu na pasku odtwarzacza, a w komunikacie
+     czytało się jak informacja o strumieniu — przy catch-upie wyglądało to,
+     jakby aplikacja wczytywała kanał na żywo zamiast nagrania. */
+  function engineName(engine) {
+    if (engine === "mse") return t("engine_mse");
+    if (engine === "hls") return t("engine_hls");
+    return t("engine_native");
   }
 
   function engineLabel(engine) {
@@ -3529,6 +3555,9 @@
        obowiązuje — inaczej „wznów” wróciłoby do starego kanału */
     state.livePauseAt = 0;
     state.lastErrorAt = 0;
+    /* nowy obraz nie jest przewinięciem: kasujemy wpis o poprzednim skoku, żeby
+       „waiting” przy wczytywaniu nie pokazał go na cudzym kanale */
+    clearSeekMark();
     destroyEngine();
 
     var source;
@@ -3627,6 +3656,9 @@
     state.cycle = 0;
     state.watchChannel = null;
     state.watchProgram = null;
+    /* wpis o przewinięciu dotyczył zamkniętego obrazu — na pasku nie ma czego
+       pokazywać, gdy kanał zostanie włączony ponownie */
+    clearSeekMark();
     state.livePauseAt = 0;
     /* unieważnia spóźnione wczytywanie biblioteki po wyjściu z kanału */
     nextEngineToken();
@@ -3652,6 +3684,44 @@
   function seekStep() {
     var step = parseInt(settings.seekSeconds, 10);
     return step > 0 ? step : 10;
+  }
+
+  /* ---------  ŚLAD PRZEWINIĘCIA („Cofnięto o 10 s” / „Przesunięto o +10 s”)  ---------
+     Po skoku w archiwum dekoder musi donieść obraz na nową pozycję i zgłasza
+     wtedy „waiting” — identycznie jak przy wczytywaniu strumienia od zera, więc
+     pasek pisał „Ładowanie strumienia…”. Przez chwilę po skoku pamiętamy więc
+     kierunek i krok i to nimi opisujemy oczekiwanie na obraz. */
+
+  var SEEK_GRACE = 6000;
+
+  function markSeek(direction, seconds) {
+    state.seekAt = Date.now();
+    state.seekDirection = direction;
+    state.seekSize = seconds;
+    refreshSeekNotice();
+  }
+
+  /* nowe okno obrazu (kanał, program, „na żywo”) nie jest przewijaniem — wpis
+     o poprzednim skoku nie może zostać na pasku */
+  function clearSeekMark() {
+    state.seekAt = 0;
+    state.seekDirection = 0;
+    state.seekSize = 0;
+  }
+
+  /* tekst skoku dla paska; pusty, gdy od przewinięcia minęło już SEEK_GRACE */
+  function seekNotice() {
+    if (!state.seekAt || Date.now() - state.seekAt > SEEK_GRACE) return "";
+    return t(state.seekDirection < 0 ? "seek_back" : "seek_forward", { s: state.seekSize });
+  }
+
+  function refreshSeekNotice() {
+    var el = $("playerSeek");
+    if (!el) return;
+    var text = seekNotice();
+    el.textContent = text;
+    if (text) el.classList.remove("hidden");
+    else el.classList.add("hidden");
   }
 
   /* Czy odtwarzane okno archiwum kończy się na „teraz”? Tak jest w timeshicie
@@ -3707,9 +3777,14 @@
       return;
     }
 
-    video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + direction * step));
+    var before = video.currentTime;
+    video.currentTime = Math.max(0, Math.min(video.duration, before + direction * step));
     $("playerProgress").style.width = (video.currentTime / video.duration) * 100 + "%";
     $("playerTime").textContent = formatTime(video.currentTime) + " / " + formatTime(video.duration);
+    /* ile obrazu naprawdę przybyło: na krawędzi nagrania skok bywa mniejszy od
+       kroku (albo zerowy) — wtedy pasek nie pisze o ruchu, którego nie było */
+    var moved = Math.round(video.currentTime) - Math.round(before);
+    if (moved) markSeek(moved < 0 ? -1 : 1, Math.abs(moved));
     showSeekOverlay();
   }
 
@@ -3756,6 +3831,9 @@
       title: program ? program.title : channel.name,
       timeshift: true
     }, "playerScreen");
+    /* świeżo wczytane okno też donosi obraz — pasek mówi wprost, że to cofnięcie,
+       a nie wczytywanie strumienia od zera */
+    markSeek(-1, seekStep());
   }
 
   function formatTime(seconds) {
@@ -4618,6 +4696,7 @@
     }
 
     updateOsdProgress();
+    refreshSeekNotice();
 
     var bar = $("playerActions");
     var playButton = bar ? bar.querySelector('[data-osd="play"]') : null;

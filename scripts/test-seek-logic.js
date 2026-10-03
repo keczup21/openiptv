@@ -58,7 +58,11 @@ function harness(o) {
     state: {
       watchChannel: o.noChannel ? null : CH,
       watchProgram: o.program || null,
-      isArchive: !!o.isArchive
+      isArchive: !!o.isArchive,
+      /* jak w aplikacji: wpis o ostatnim skoku (markSeek / clearSeekMark) */
+      seekAt: 0,
+      seekDirection: 0,
+      seekSize: 0
     },
     settings: { seekSeconds: o.seekSeconds === undefined ? 10 : o.seekSeconds },
     $: function (id) {
@@ -148,7 +152,7 @@ function zapHarness(o) {
    interesuje nas tylko decyzja, gdzie wraca „Wstecz” i co sie zeruje. */
 function playHarness(o) {
   o = o || {};
-  const calls = { screens: [] };
+  const calls = { screens: [], seekCleared: 0 };
   const sandbox = {
     state: {
       playerReturn: o.playerReturn || "browserScreen",
@@ -160,6 +164,7 @@ function playHarness(o) {
       return { classList: { add: function () {}, toggle: function () {} }, textContent: "" };
     },
     startRecentWatch: function () {},
+    clearSeekMark: function () { calls.seekCleared++; },
     destroyEngine: function () {},
     buildCatchupUrl: function () { return "http://host/catchup.ts"; },
     buildSourceQueue: function (source) { return [{ url: source }]; },
@@ -430,6 +435,69 @@ check("nowe okno archiwum: stara pauza na zywo nie obowiazuje, obraz sie wlacza"
   p.api.state.isArchive === true && p.api.state.livePauseAt === 0 &&
   p.api.state.watchChannel === CH && p.calls.screens[0] === "playerScreen",
   JSON.stringify({ isArchive: p.api.state.isArchive, livePauseAt: p.api.state.livePauseAt, screens: p.calls.screens }));
+
+/* --- 10. pasek przewijania archiwum („cofnieto / przesunieto o N s”) -----
+   Po skoku dekoder musi doniesc obraz na nowa pozycje i zglasza wtedy
+   „waiting” — tak samo jak przy wczytywaniu strumienia od zera, wiec pasek
+   pisal „Ladowanie strumienia (LIVE)”. Teraz zapamietujemy kierunek i krok
+   skoku i to nimi opisujemy te chwile. */
+h = harness({ isArchive: true, duration: 600, currentTime: 300, program: { start: NOW - 600000, end: NOW, title: "P", timeshift: true } });
+h.api.seekBy(1);
+check("skok do przodu: pasek wie o kroku 10 s w przod",
+  h.video.currentTime === 310 && h.api.state.seekDirection === 1 && h.api.state.seekSize === 10 &&
+  h.api.seekNotice() === "seek_forward",
+  JSON.stringify({ t: h.video.currentTime, d: h.api.state.seekDirection, s: h.api.state.seekSize, note: h.api.seekNotice() }));
+
+h.api.state.seekAt = NOW - 7000;
+check("kilka sekund po skoku wpis znika (to juz zwykle buforowanie)",
+  h.api.seekNotice() === "", h.api.seekNotice());
+
+h = harness({ isArchive: true, duration: 600, currentTime: 300, program: { start: NOW - 600000, end: NOW, title: "P", timeshift: true } });
+h.api.seekBy(-1);
+check("skok w tyl: pasek wie o cofnieciu",
+  h.video.currentTime === 290 && h.api.seekNotice() === "seek_back" && h.api.state.seekSize === 10,
+  JSON.stringify({ t: h.video.currentTime, note: h.api.seekNotice() }));
+
+h = harness({ isArchive: true, duration: 600, currentTime: 300, seekSeconds: 30, program: { start: NOW - 600000, end: NOW, title: "P", timeshift: true } });
+h.api.seekBy(-1);
+check("krok z ustawien (30 s) trafia do wpisu na pasku",
+  h.api.state.seekSize === 30 && h.api.seekNotice() === "seek_back",
+  JSON.stringify({ s: h.api.state.seekSize }));
+
+h = harness({ isArchive: true, duration: 3600, currentTime: 4, program: { start: NOW - 7200000, end: NOW - 3600000, title: "Stary" } });
+h.api.seekBy(-1);
+check("przy krawedzi nagrania skok jest mniejszy od kroku i tak tez jest opisany",
+  h.video.currentTime === 0 && h.api.state.seekSize === 4 && h.api.seekNotice() === "seek_back",
+  JSON.stringify({ t: h.video.currentTime, s: h.api.state.seekSize }));
+
+h = harness({ isArchive: true, duration: 3600, currentTime: 0, program: { start: NOW - 7200000, end: NOW - 3600000, title: "Stary" } });
+h.api.seekBy(-1);
+check("zero ruchu (poczatek nagrania): pasek nie pisze o cofnieciu",
+  h.video.currentTime === 0 && h.api.state.seekAt === 0 && h.api.seekNotice() === "",
+  "seekAt=" + h.api.state.seekAt);
+
+h = harness({ isArchive: true, duration: 60, currentTime: 0, program: { start: NOW - 60000, end: NOW, title: "P", timeshift: true } });
+h.api.seekBy(-1);
+check("nowe okno catch-up (dluzsze w tyl) tez jest opisane jako cofniecie",
+  h.calls.play.length === 1 && h.api.seekNotice() === "seek_back" && h.api.state.seekSize === 10,
+  JSON.stringify({ play: h.calls.play.length, note: h.api.seekNotice() }));
+
+h = harness({ isArchive: false, duration: Infinity, epg: { title: "Wiadomosci" } });
+h.api.seekBy(-1);
+check("wejscie w catch-up z kanalu na zywo: cofnieto o krok",
+  h.calls.play.length === 1 && h.api.seekNotice() === "seek_back",
+  h.api.seekNotice());
+
+h = harness({ isArchive: false, duration: Infinity, epg: { title: "Wiadomosci" } });
+h.api.seekBy(1);
+check("na zywo do przodu bez skoku: brak wpisu o przewinieciu",
+  h.api.state.seekAt === 0 && h.api.seekNotice() === "", "seekAt=" + h.api.state.seekAt);
+
+/* nowy obraz (kanal / program) nie jest przewinieciem — kasuje wpis o skoku */
+p = playHarness({});
+p.api.playChannel(CH, null, "playerScreen");
+check("wczytanie nowego obrazu kasuje wpis o przewinieciu",
+  p.calls.seekCleared === 1, "seekCleared=" + p.calls.seekCleared);
 
 console.log("");
 if (fails) { console.log("BLEDY: " + fails); process.exit(1); }

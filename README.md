@@ -72,7 +72,7 @@ bez wchodzenia fokusem w przyciski:
 | Klawisz | Co robi |
 |---|---|
 | `▲` `▼` (CH+ / CH−) | następny / poprzedni kanał z listy, którą widzisz (z kategorii, wyszukiwania), z zawijaniem na końcach |
-| `◀` `▶` / `⏪` `⏩` | przewijanie o krok z ustawień; w archiwum skok, na kanale na żywo `⏪` wchodzi w catch-up, a `▶` na zatrzymanym obrazie wznawia od miejsca pauzy |
+| `◀` `▶` / `⏪` `⏩` | przewijanie o krok z ustawień; w archiwum skok, na kanale na żywo `⏪` wchodzi w catch-up, a `▶` na zatrzymanym obrazie wznawia od miejsca pauzy. Po skoku pasek pisze wprost, o ile obraz przesunięto („Cofnięto o 10 s” / „Przesunięto o +10 s”), a nie „Ładowanie strumienia” |
 | `OK` | pokaż / schowaj pasek informacyjny (mini-EPG kanału) |
 | `OK` przytrzymane, `MENU` | opcje kanału i obrazu (od początku, poprzedni/następny program, na żywo, cisza, EPG, ulubione) |
 | `⏵` `⏸` / `⏹` | pauza i wznowienie. Po dłuższej pauzie kanał na żywo jest wznawiany z archiwum dokładnie od chwili zatrzymania (jeśli kanał ma archiwum), a nie od bieżącej sceny |
