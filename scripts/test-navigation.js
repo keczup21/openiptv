@@ -16,6 +16,9 @@ const ROOT = path.join(__dirname, "..");
 const src = fs.readFileSync(path.join(ROOT, "www", "app.js"), "utf8").replace(/\r\n/g, "\n");
 const html = fs.readFileSync(path.join(ROOT, "www", "index.html"), "utf8").replace(/\r\n/g, "\n");
 const css = fs.readFileSync(path.join(ROOT, "www", "styles.css"), "utf8").replace(/\r\n/g, "\n");
+/* natywna obsługa pilota (klawisze multimedialne) — patrz sekcja 19 */
+const java = fs.readFileSync(path.join(ROOT, "android", "app", "src", "main", "java",
+  "pl", "openiptv", "player", "MainActivity.java"), "utf8").replace(/\r\n/g, "\n");
 
 let fails = 0;
 function check(name, cond, extra) {
@@ -675,6 +678,137 @@ check("nazwy kanalow przykrywaja linie przy przewijaniu osi czasu",
   /\.guide-channel\s*\{[^}]*z-index: 4/.test(css) && /\.guide-axis\s*\{[^}]*z-index: 5/.test(css));
 check("fokus kafelka kanalu to jedna obwodka wokol calego wiersza",
   css.indexOf("body.uimode-tv .channel .channel-main:focus") > 0);
+
+/* --- 15. zakładki ustawień (Ogólne / Aktualizacja / Instrukcja) ----------
+   Ustawienia rosły w jedną długą kartę, w której instrukcja pilota stała
+   pomiędzy polami formularza. Teraz są trzy zakładki: „Ogólne” (sama
+   aplikacja: profil, źródła, EPG, odtwarzanie, wygląd), „Aktualizacja” (tylko
+   wydania) i „Instrukcja” (poradnik obsługi pilota). */
+function settingsPanel(id) {
+  const at = html.indexOf('id="' + id + '"');
+  if (at < 0) return "";
+  const next = html.indexOf('id="settingsPanel', at + 12);
+  return next < 0 ? html.slice(at) : html.slice(at, next);
+}
+
+const tabsAt = html.indexOf('id="settingsTabs"');
+const tabsHtml = tabsAt < 0 ? "" : html.slice(tabsAt, html.indexOf("</nav>", tabsAt));
+const tabNames = (tabsHtml.match(/data-tab="[a-z]+"/g) || [])
+  .map(function (s) { return s.replace(/.*="/, "").replace(/"$/, ""); });
+check("ustawienia maja trzy zakladki (Ogolne / Aktualizacja / Instrukcja)",
+  tabNames.join(",") === "general,update,help", tabNames.join(",") || "brak paska zakladek");
+check("kazda zakladka ma napis z tlumaczen i swoja sekcje z trescia",
+  html.indexOf('data-i18n="tab_general"') > 0 && html.indexOf('data-i18n="tab_update"') > 0 &&
+  html.indexOf('data-i18n="tab_help"') > 0 &&
+  html.indexOf('id="settingsPanelGeneral"') > 0 && html.indexOf('id="settingsPanelUpdate"') > 0 &&
+  html.indexOf('id="settingsPanelHelp"') > 0);
+check("zakladki przelacza app.js — widoczna jest jedna sekcja naraz",
+  src.indexOf('var SETTINGS_TABS = ["general", "update", "help"];') > 0 &&
+  src.indexOf("function showSettingsTab(name)") > 0 &&
+  src.indexOf('panel.classList.toggle("hidden", !on)') > 0);
+check("pilot zmienia zakladke (◀ ▶), a ▼ wchodzi w jej tresc",
+  src.indexOf("stepSettingsTab(key === 37 || key === 412 ? -1 : 1)") > 0 &&
+  src.indexOf("focusSettingsPanel();") > 0 &&
+  src.indexOf('focused.getAttribute("data-tab")') > 0);
+check("pasek zakladek wyglada jak przelacznik (aktywna w kolorze akcentu)",
+  css.indexOf(".settings-tabs {") > 0 && css.indexOf(".settings-tab.active {") > 0 &&
+  css.indexOf("body.uimode-tv .settings-tab") > 0);
+
+const generalPanel = settingsPanel("settingsPanelGeneral");
+const updatePanel = settingsPanel("settingsPanelUpdate");
+const helpPanel = settingsPanel("settingsPanelHelp");
+check("zakladka Ogolne trzyma sama aplikacje (zrodla, wyglad), a nie aktualizacje",
+  generalPanel.indexOf('data-i18n="sources"') > 0 && generalPanel.indexOf('data-i18n="appearance"') > 0 &&
+  generalPanel.indexOf('id="checkUpdates"') < 0);
+check("zakladka Aktualizacja trzyma tylko wydania",
+  updatePanel.indexOf('id="checkUpdates"') > 0 && updatePanel.indexOf('id="installUpdate"') > 0 &&
+  updatePanel.indexOf('data-i18n="sources"') < 0);
+check("zakladka Instrukcja to poradnik (nawigacja, odtwarzacz, EPG, archiwum)",
+  helpPanel.indexOf('data-i18n="help_nav_move"') > 0 &&
+  helpPanel.indexOf('data-i18n="player_keys"') > 0 &&
+  helpPanel.indexOf('data-i18n="help_epg_grid"') > 0 &&
+  helpPanel.indexOf('data-i18n="help_catchup_list"') > 0);
+check("przyciski aktualizacji wygladaja jak przyciski (tlo, obwodka, hover)",
+  /\.update-row button\s*\{[^}]*background: var\(--surface-2\)[^}]*border: 2px solid var\(--border\)/.test(css) &&
+  css.indexOf(".update-row button:hover") > 0 &&
+  /\.update-row #installUpdate\s*\{[^}]*background: var\(--grad\)/.test(css));
+/* --- 16. pasek odtwarzacza bez duplikatow --------------------------------
+   Na pasku stały przyciski „Kanał” (to samo, co MENU / trzymane OK) i
+   „Wstecz” (to samo, co klawisz Wstecz na pilocie), a „Program TV” otwierał
+   siatkę wszystkich kanałów zamiast programów oglądanego kanału. */
+const osdStart = src.indexOf("function buildOsdActions()");
+const osdEnd = src.indexOf("function openPlayerGuide()");
+if (osdStart < 0 || osdEnd <= osdStart) throw new Error("Nie znalazlem paska odtwarzacza w app.js");
+const codeOsd = src.slice(osdStart, osdEnd);
+check("menu opcji kanalu i Wstecz na pasku pokazuja sie tylko na dotykowym ekranie",
+  codeOsd.indexOf('classList.add("osd-touch-only")') > 0 &&
+  codeOsd.indexOf('osdButton("options", t("ctx_menu")') > 0 &&
+  css.indexOf("body.uimode-tv .osd-touch-only { display: none; }") > 0);
+check("„EPG” na pasku otwiera liste programow ogladanego kanalu",
+  codeOsd.indexOf('osdButton("epg", t("osd_epg"), openPlayerGuide)') > 0 &&
+  src.indexOf("openArchive(state.watchChannel, { fromPlayer: true });") > 0 &&
+  src.indexOf('osd_epg: "📅 EPG"') > 0);
+check("„Na zywo” jest na pasku wtedy, gdy obraz nie jest na zywo",
+  codeOsd.indexOf('if (state.isArchive) bar.appendChild(osdButton("live", t("osd_live"), goLive));') > 0);
+check("„Od poczatku” zostaje takze na kanale na zywo z EPG",
+  codeOsd.indexOf("if (state.isArchive || currentProgram(channel))") > 0);
+
+/* --- 17. „Wstecz” w odtwarzaczu nie wraca na pusty odtwarzacz -------------
+   Akcje wewnątrz obrazu (następny program, „od początku”, „na żywo”,
+   wznowienie po pauzie) podawały playerScreen jako ekran powrotu. Po wyjściu
+   z kanału „Wstecz” pokazywał więc czarny prostokąt: odtwarzacz bez obrazu,
+   bez paska i bez listy kanałów. */
+check("cel powrotu odtwarzacza nigdy nie jest samym odtwarzaczem",
+  src.indexOf('if (returnScreen && returnScreen !== "playerScreen") state.playerReturn = returnScreen;') > 0);
+check("stopPlayback pilnuje, ze nie wraca na odtwarzacz bez kanalu",
+  src.indexOf("var target = state.playerReturn && state.playerReturn !== \"playerScreen\"") > 0 &&
+  src.indexOf("showScreen(target);") > 0);
+check("lista programow wraca do obrazu tylko wtedy, gdy cos tam jeszcze leci",
+  src.indexOf('archive.returnTo === "playerScreen" && state.watchChannel ? "playerScreen" : "browserScreen"') > 0);
+check("Wstecz z archiwum idzie wspolna droga (closeArchive)",
+  src.indexOf("if (archiveClose) archiveClose.onclick = closeArchive;") > 0 &&
+  src.indexOf("closeArchive();\n      return true;") > 0);
+
+/* --- 18. lista programow kanalu (EPG w odtwarzaczu) ---------------------- */
+check("lista pokazuje takze to, co dopiero bedzie (12 godzin w przod)",
+  src.indexOf("var ARCHIVE_AHEAD = 12 * 3600000;") > 0 &&
+  src.indexOf("var until = fromPlayer ? now + ARCHIVE_AHEAD : now;") > 0);
+check("program, ktory leci teraz, ma podpis LIVE",
+  src.indexOf('live.className = "guide-live"') > 0 && src.indexOf('live.textContent = t("live")') > 0);
+check("program, ktory dopiero bedzie, widac, ale nie da sie go wybrac",
+  src.indexOf('note.textContent = t("epg_list_future")') > 0 &&
+  src.indexOf("button.disabled = true;") > 0 && css.indexOf(".program.future {") > 0);
+check("„Na zywo” nad lista wraca do biezacej chwili",
+  html.indexOf('id="archiveLive"') > 0 && src.indexOf("function playArchiveLive()") > 0 &&
+  src.indexOf("if (archiveLive) archiveLive.onclick = playArchiveLive;") > 0);
+check("lista otwarta z odtwarzacza wraca potem do listy kanalow",
+  src.indexOf('playChannel(channel, program, fromPlayer ? "browserScreen" : "archiveScreen");') > 0);
+
+/* --- 19. play/pauza z pilota (klawisze multimedialne) --------------------
+   Przycisk ⏵‖ na pilocie nie robił nic: dekodery wysyłają różne kody
+   (85 / 126 / 127 / 86 / 415 / 179), a część z nich WebView zjadał dla
+   własnej sesji multimediów. Teraz obsługujemy kody i nazwy klawiszy, stan
+   sesji multimediów, zwolnienie klawisza i most natywny. */
+check("kody klawiszy multimedialnych obu platform",
+  src.indexOf("var MEDIA_KEY_TOGGLE = [85, 126, 179, 415];") > 0 &&
+  src.indexOf("var MEDIA_KEY_PAUSE = [86, 93, 127];") > 0 &&
+  src.indexOf('if (name === "MediaPlayPause" || name === "MediaPlay") return "toggle";') > 0);
+check("play/pauza dziala takze bez keydown (keyup) i przez most natywny",
+  src.indexOf("if (mediaKeyHandledRecently()) return;") > 0 &&
+  src.indexOf("window.__openiptvKey = function (code, name)") > 0 &&
+  src.indexOf("runMediaKey(media);") > 0);
+check("sesja multimediow rejestruje akcje pilota (Android TV / Fire TV)",
+  src.indexOf("function bindMediaSession()") > 0 &&
+  src.indexOf("seekbackward: function () { seekBy(-1); }") > 0 &&
+  src.indexOf("session.playbackState = inPlayer") > 0);
+check("natywny odbiornik wie, ze leci obraz (most setPlayerMode)",
+  src.indexOf("function notifyNativePlayer(on)") > 0 && src.indexOf("bridge.setPlayerMode(!!on);") > 0 &&
+  src.indexOf('notifyNativePlayer(id === "playerScreen");') > 0);
+check("MainActivity oddaje klawisze multimedialne stronie tylko w odtwarzaczu",
+  java.indexOf("public boolean onKeyDown(int keyCode, KeyEvent event)") > 0 &&
+  java.indexOf("window.__openiptvKey") > 0 &&
+  java.indexOf("public void setPlayerMode(final boolean on)") > 0 &&
+  java.indexOf("if (playerMode && isMediaKey(keyCode))") > 0);
 
 console.log("");
 if (fails) { console.log("BLEDY: " + fails); process.exit(1); }

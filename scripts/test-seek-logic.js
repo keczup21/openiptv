@@ -32,6 +32,14 @@ if (zStart < 0 || zEnd < 0) throw new Error("Nie znalazlem bloku przelaczania ka
 const codeZap = src.slice(src.lastIndexOf("\n\n", zStart) + 2, src.lastIndexOf("\n\n", zEnd) + 2);
 if (codeZap.indexOf("function listIndex") < 0) throw new Error("Wyciety blok nie ma listIndex");
 
+/* Blok wejscia w kanal: playChannel() — decyduje, gdzie wraca „Wstecz” po
+   wyjsciu z obrazu, i resetuje stan pauzy na zywo. */
+const pStart = src.indexOf("function playChannel(");
+const pEnd = src.indexOf("function zapChannel(");
+if (pStart < 0 || pEnd <= pStart) throw new Error("Nie znalazlem playChannel w app.js");
+const codePlay = src.slice(src.lastIndexOf("\n\n", pStart) + 2, src.lastIndexOf("\n\n", pEnd) + 2);
+if (codePlay.indexOf("state.playerReturn") < 0) throw new Error("Wyciety blok nie ma playChannel");
+
 const NOW = 1700000000000;
 const CH = { name: "TVN", streamUrl: "http://host/live/u/p/12345.ts" };
 
@@ -134,6 +142,38 @@ function zapHarness(o) {
   vm.createContext(sandbox);
   vm.runInContext(codeZap, sandbox);
   return { api: sandbox, calls: calls, list: list };
+}
+
+/* Otoczenie dla wejscia w kanal: playChannel() bez prawdziwego wideo —
+   interesuje nas tylko decyzja, gdzie wraca „Wstecz” i co sie zeruje. */
+function playHarness(o) {
+  o = o || {};
+  const calls = { screens: [] };
+  const sandbox = {
+    state: {
+      playerReturn: o.playerReturn || "browserScreen",
+      livePauseAt: o.livePauseAt || 0
+    },
+    settings: { osdEnabled: true },
+    clearTimeout: function () {},
+    $: function () {
+      return { classList: { add: function () {}, toggle: function () {} }, textContent: "" };
+    },
+    startRecentWatch: function () {},
+    destroyEngine: function () {},
+    buildCatchupUrl: function () { return "http://host/catchup.ts"; },
+    buildSourceQueue: function (source) { return [{ url: source }]; },
+    showScreen: function (id) { calls.screens.push(id); },
+    t: function (k) { return k; },
+    buildOsdActions: function () {},
+    updateOsd: function () {},
+    showOsd: function () {},
+    bindMediaSession: function () {},
+    nextSourceEntry: function () {}
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(codePlay, sandbox);
+  return { api: sandbox, calls: calls };
 }
 
 /* --- 1. kanal na zywo --------------------------------------------------- */
@@ -367,6 +407,29 @@ z = zapHarness({ list: [{ name: "A", streamUrl: "http://host/u/p/1.ts" }] });
 z.api.zapChannel(1);
 check("jeden kanal w playliscie: nic nie przelaczamy",
   z.calls.play.length === 0, JSON.stringify(z.calls.play));
+
+/* --- 9. wejscie w kanal: gdzie wraca „Wstecz” -------------------------- */
+p = playHarness({});
+p.api.playChannel(CH, null, "browserScreen");
+check("ogladanie z listy: „Wstecz” wraca na liste kanalow",
+  p.api.state.playerReturn === "browserScreen", p.api.state.playerReturn);
+
+p = playHarness({});
+p.api.playChannel(CH, { start: NOW - 60000, end: NOW, title: "P" }, "playerScreen");
+check("akcja w odtwarzaczu (od poczatku, na zywo, nastepny program) nie psuje miejsca powrotu",
+  p.api.state.playerReturn === "browserScreen", p.api.state.playerReturn);
+
+p = playHarness({ playerReturn: "archiveScreen" });
+p.api.playChannel(CH, null, "playerScreen");
+check("powrot do archiwum zostaje, gdy obraz wyszedl z listy nagran",
+  p.api.state.playerReturn === "archiveScreen", p.api.state.playerReturn);
+
+p = playHarness({ playerReturn: "browserScreen", livePauseAt: NOW - 60000 });
+p.api.playChannel(CH, { start: NOW - 60000, end: NOW, title: "P" }, "archiveScreen");
+check("nowe okno archiwum: stara pauza na zywo nie obowiazuje, obraz sie wlacza",
+  p.api.state.isArchive === true && p.api.state.livePauseAt === 0 &&
+  p.api.state.watchChannel === CH && p.calls.screens[0] === "playerScreen",
+  JSON.stringify({ isArchive: p.api.state.isArchive, livePauseAt: p.api.state.livePauseAt, screens: p.calls.screens }));
 
 console.log("");
 if (fails) { console.log("BLEDY: " + fails); process.exit(1); }

@@ -17,6 +17,43 @@ z numerem opisuje akapit wyżej). Opis wydania na GitHubie powstaje z tego wpisu
 `npm run notes` (`scripts/release-notes.js`) bierze z changeloga tylko sekcję
 wydawanej wersji.
 
+## [1.21.4] — 2026-10-03
+
+### Naprawiono
+- **„Wstecz” w odtwarzaczu wraca do listy kanałów, a nie na czarny ekran.**
+  Akcje wykonywane na obrazie (następny program, „od początku”, „na żywo”,
+  wznowienie po pauzie) ustawiały odtwarzacz jako miejsce powrotu, więc po
+  wyjściu z kanału „Wstecz” pokazywał czarny prostokąt bez obrazu i bez paska.
+- **Play/pauza na pilocie działa.** Dekodery wysyłają `⏵‖` różnymi kodami,
+  a część z nich przeglądarka zjadała dla własnej sesji multimediów. Aplikacja
+  rozpoznaje teraz wszystkie te kody (i same nazwy klawiszy), rejestruje akcje
+  w sesji multimediów, łapie klawisz także na zwolnieniu, a na Android TV
+  i Fire TV oddaje go stronie natywna obsługa pilota.
+- **„Sprawdź aktualizacje” wygląda jak przycisk** — miał takie samo tło jak
+  karta ustawień, więc wyglądał na zwykły napis. Teraz ma obwódkę, jaśniejsze
+  tło i reakcję na najechanie i naciśnięcie.
+
+### Dodano
+- **Ustawienia mają trzy zakładki: Ogólne, Aktualizacja i Instrukcja.**
+  W „Ogólnych” jest wszystko o samej aplikacji (profil i źródło, EPG,
+  archiwum, odtwarzanie, wygląd i język), w „Aktualizacji” tylko wydania,
+  a „Instrukcja” to poradnik obsługi. Pilot zmienia zakładkę strzałkami
+  `◀` `▶`, a `▼` wchodzi w treść.
+- **„EPG” na pasku odtwarzacza pokazuje listę programów oglądanego kanału** —
+  poprzednie, bieżący (z podpisem LIVE) i następne. Wybranie programu odtwarza
+  go z archiwum, a `Na żywo` wraca do bieżącej chwili. Programy, które dopiero
+  będą, są widoczne, ale nie do wybrania, bo archiwum ich nie ma.
+
+### Zmieniono
+- **Pasek odtwarzacza bez duplikatów.** Na telewizorze zniknęły z niego
+  „Kanał” (to samo, co menu pod `MENU` i trzymanym `OK`) oraz „Wstecz” (to
+  samo, co klawisz `Wstecz` na pilocie). Na telefonie i tablecie oba zostają,
+  bo tam nie ma pilota. Przycisk programu TV na pasku to teraz `EPG`,
+  a odtwarzacz wypisuje w podpowiedzi, jak z niego wyjść.
+- **Instrukcja w ustawieniach to poradnik**, a nie tabela wciśnięta między pola
+  formularza: źródło kanałów, poruszanie się po aplikacji, pilot w odtwarzaczu,
+  program TV, archiwum i telefon — każdy z krótkim opisem.
+
 ## [1.21.3] — 2026-10-03
 
 ### Naprawiono

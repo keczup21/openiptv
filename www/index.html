@@ -22,6 +22,16 @@
   <main id="settingsScreen" class="screen settings-screen hidden">
     <section class="settings-card">
       <h1 data-i18n="settings">Ustawienia</h1>
+      <!-- Zakładki ustawień: „Ogólne” trzyma wszystko o samej aplikacji
+           (profil i źródła, EPG, odtwarzanie, wygląd), „Aktualizacja” tylko
+           wydania, a „Instrukcja” to poradnik obsługi. Pilot zmienia zakładkę
+           strzałkami ◀ ▶, a ▼ wchodzi w treść (patrz keydown w app.js). -->
+      <nav id="settingsTabs" class="settings-tabs" role="tablist" data-i18n-title="tabs_hint">
+        <button id="settingsTabGeneral" class="settings-tab active" role="tab" aria-selected="true" tabindex="0" data-tab="general" data-i18n="tab_general">Ogólne</button>
+        <button id="settingsTabUpdate" class="settings-tab" role="tab" aria-selected="false" tabindex="0" data-tab="update" data-i18n="tab_update">Aktualizacja</button>
+        <button id="settingsTabHelp" class="settings-tab" role="tab" aria-selected="false" tabindex="0" data-tab="help" data-i18n="tab_help">Instrukcja</button>
+      </nav>
+      <div id="settingsPanelGeneral" class="settings-panel" data-panel="general" role="tabpanel">
       <div class="profile-row">
         <select id="settingsProfile" tabindex="0"></select>
         <button id="newProfile" tabindex="0" data-i18n="new">Nowy</button>
@@ -99,22 +109,6 @@
       <h2 data-i18n="advanced">ZAAWANSOWANE (OPCJONALNE)</h2>
       <label><span data-i18n="catchup_template">Globalny szablon catch-up</span><input id="catchupTemplate" tabindex="0" type="text" placeholder="…start={utc}&end={utcend}"></label>
       <label class="check-row"><input id="catchupAll" tabindex="0" type="checkbox" checked><span data-i18n="catchup_all">Catch-up na wszystkich kanałach (HLS)</span></label>
-      <h2 data-i18n="player_keys">PILOT W ODTWARZACZU</h2>
-      <p class="hint" data-i18n="player_keys_hint">Tak działa pilot, gdy leci kanał albo archiwum. Ustawienie „◀ ▶ przewija” dotyczy tylko strzałek — ⏪ ⏩ przewijają zawsze. Na dotykowym ekranie te same akcje są na pasku u dołu obrazu.</p>
-      <table class="keys-table">
-        <tbody>
-          <tr><th scope="row"><kbd>OK</kbd></th><td data-i18n="key_ok_short">Pasek z nazwą kanału, programem i postępem: pokaż albo schowaj.</td></tr>
-          <tr><th scope="row"><kbd>OK</kbd></th><td data-i18n="key_ok_hold">Przytrzymaj około sekundy: menu opcji kanału (ulubione, archiwum, program TV, od początku, cisza).</td></tr>
-          <tr><th scope="row"><kbd>MENU</kbd></th><td data-i18n="key_menu">To samo menu opcji kanału, bez trzymania OK.</td></tr>
-          <tr><th scope="row"><kbd>▲ ▼</kbd></th><td data-i18n="key_updown">Następny i poprzedni kanał z widocznej listy (jak CH+ / CH−), z zawijaniem na końcach. Jedno naciśnięcie to jedna zmiana.</td></tr>
-          <tr><th scope="row"><kbd>◀ ▶</kbd></th><td data-i18n="key_leftright">Przewijanie o krok z ustawienia „Krok przewijania archiwum”: na nagraniu skok w tył i w przód, na kanale na żywo ◀ wchodzi w catch-up, a ▶ wznawia zatrzymany obraz.</td></tr>
-          <tr><th scope="row"><kbd>⏪ ⏩</kbd></th><td data-i18n="key_rewff">Przewijanie pilota działa zawsze, także przy wyłączonych strzałkach; ⏩ na końcu programu wraca na żywo.</td></tr>
-          <tr><th scope="row"><kbd>⏵‖</kbd></th><td data-i18n="key_playpause">Pauza i wznowienie. Po dłuższej pauzie kanał na żywo wraca do chwili zatrzymania przez catch-up, a bez archiwum obraz dogania transmisję.</td></tr>
-          <tr><th scope="row"><kbd>⏹</kbd></th><td data-i18n="key_stop">Zatrzymanie obrazu — to samo co pauza.</td></tr>
-          <tr><th scope="row"><kbd>🔇</kbd></th><td data-i18n="key_mute">Cisza w odtwarzaczu; głośność telewizora zostaje bez zmian.</td></tr>
-          <tr><th scope="row"><kbd data-i18n="key_back">Wstecz</kbd></th><td data-i18n="key_back_desc">Zamyka menu albo pasek; z obrazu wraca do listy kanałów, a z listy pyta „Wyjdź z aplikacji?”.</td></tr>
-        </tbody>
-      </table>
       <h2 data-i18n="appearance">WYGLĄD I JĘZYK</h2>
       <label class="row-label"><span data-i18n="language">Język</span>
         <select id="language" tabindex="0">
@@ -147,14 +141,76 @@
       <p class="hint" id="screenInfo"></p>
       <label class="check-row"><input id="osdEnabled" tabindex="0" type="checkbox" checked><span data-i18n="osd_enabled">Mini-EPG na kanale (co teraz leci)</span></label>
       <p class="hint" id="platformInfo"></p>
-      <h2 data-i18n="updates">AKTUALIZACJE</h2>
-      <p class="hint" data-i18n="updates_hint">Tu zobaczysz tylko, że jest nowsza wersja i co się zmieniło. Nic nie instaluje się samo — aktualizację uruchamia przycisk.</p>
-      <div class="update-row">
-        <button id="checkUpdates" tabindex="0" data-i18n="update_check">Sprawdź aktualizacje</button>
-        <button id="installUpdate" tabindex="0" class="hidden" data-i18n="update_install">Pobierz i zainstaluj</button>
       </div>
-      <p id="updateStatus" class="update-status"></p>
-      <p id="updateNotes" class="update-notes hidden"></p>
+
+      <div id="settingsPanelUpdate" class="settings-panel hidden" data-panel="update" role="tabpanel">
+        <h2 data-i18n="updates">AKTUALIZACJE</h2>
+        <p class="hint" data-i18n="updates_hint">Tu zobaczysz tylko, że jest nowsza wersja i co się zmieniło. Nic nie instaluje się samo — aktualizację uruchamia przycisk.</p>
+        <div class="update-row">
+          <button id="checkUpdates" tabindex="0" data-i18n="update_check">Sprawdź aktualizacje</button>
+          <button id="installUpdate" tabindex="0" class="hidden" data-i18n="update_install">Pobierz i zainstaluj</button>
+        </div>
+        <p id="updateStatus" class="update-status"></p>
+        <p id="updateNotes" class="update-notes hidden"></p>
+      </div>
+
+      <div id="settingsPanelHelp" class="settings-panel hidden" data-panel="help" role="tabpanel">
+        <h2 data-i18n="help_title">JAK KORZYSTAĆ Z APLIKACJI</h2>
+        <p class="hint" data-i18n="help_intro">Poradnik w trzech krokach: źródło kanałów, poruszanie się pilotem i odtwarzacz z archiwum.</p>
+
+        <h2 data-i18n="help_setup">1. ŹRÓDŁO KANAŁÓW</h2>
+        <p class="hint" data-i18n="help_setup_text">Playlistę wpisuje się w zakładce „Ogólne”: adres M3U, plik z pamięci urządzenia albo login Xtream. Po zapisaniu kanały, EPG i archiwum pobierają się same.</p>
+
+        <h2 data-i18n="help_nav">2. PORUSZANIE SIĘ</h2>
+        <table class="keys-table">
+          <tbody>
+            <tr><th scope="row"><kbd>◀ ▲ ▼ ▶</kbd></th><td data-i18n="help_nav_move">Strzałki chodzą po przyciskach, grupach i liście kanałów — podświetlenie zawsze widać.</td></tr>
+            <tr><th scope="row"><kbd>OK</kbd></th><td data-i18n="help_nav_ok">Wybierz podświetloną pozycję: kategorię, kanał albo przycisk.</td></tr>
+            <tr><th scope="row"><kbd>MENU</kbd></th><td data-i18n="help_nav_menu">Menu opcji kanału bez trzymania OK — to samo, co przytrzymane OK na kafelku kanału.</td></tr>
+            <tr><th scope="row"><kbd data-i18n="search">Szukaj</kbd></th><td data-i18n="help_nav_search">Pole szukania. Wychodzi się z niego strzałkami: ▼ do listy kanałów, ◀ na początku tekstu do grup, ▶ na końcu do paska u góry.</td></tr>
+            <tr><th scope="row"><kbd data-i18n="key_back">Wstecz</kbd></th><td data-i18n="help_nav_back">Zamyka nakładkę albo wraca o ekran wstecz. Na liście kanałów pyta, czy wyjść z aplikacji.</td></tr>
+          </tbody>
+        </table>
+
+        <h2 data-i18n="player_keys">PILOT W ODTWARZACZU</h2>
+      <p class="hint" data-i18n="player_keys_hint">Tak działa pilot, gdy leci kanał albo archiwum. Ustawienie „◀ ▶ przewija” dotyczy tylko strzałek — ⏪ ⏩ przewijają zawsze. Na dotykowym ekranie te same akcje są na pasku u dołu obrazu.</p>
+      <table class="keys-table">
+        <tbody>
+          <tr><th scope="row"><kbd>OK</kbd></th><td data-i18n="key_ok_short">Pasek z nazwą kanału, programem i postępem: pokaż albo schowaj.</td></tr>
+          <tr><th scope="row"><kbd>OK</kbd></th><td data-i18n="key_ok_hold">Przytrzymaj około sekundy: menu opcji kanału (ulubione, archiwum, program TV, od początku, cisza).</td></tr>
+          <tr><th scope="row"><kbd>MENU</kbd></th><td data-i18n="key_menu">To samo menu opcji kanału, bez trzymania OK.</td></tr>
+          <tr><th scope="row"><kbd>▲ ▼</kbd></th><td data-i18n="key_updown">Następny i poprzedni kanał z widocznej listy (jak CH+ / CH−), z zawijaniem na końcach. Jedno naciśnięcie to jedna zmiana.</td></tr>
+          <tr><th scope="row"><kbd>◀ ▶</kbd></th><td data-i18n="key_leftright">Przewijanie o krok z ustawienia „Krok przewijania archiwum”: na nagraniu skok w tył i w przód, na kanale na żywo ◀ wchodzi w catch-up, a ▶ wznawia zatrzymany obraz.</td></tr>
+          <tr><th scope="row"><kbd>⏪ ⏩</kbd></th><td data-i18n="key_rewff">Przewijanie pilota działa zawsze, także przy wyłączonych strzałkach; ⏩ na końcu programu wraca na żywo.</td></tr>
+          <tr><th scope="row"><kbd>⏵‖</kbd></th><td data-i18n="key_playpause">Pauza i wznowienie. Po dłuższej pauzie kanał na żywo wraca do chwili zatrzymania przez catch-up, a bez archiwum obraz dogania transmisję.</td></tr>
+          <tr><th scope="row"><kbd>⏹</kbd></th><td data-i18n="key_stop">Zatrzymanie obrazu — to samo co pauza.</td></tr>
+          <tr><th scope="row"><kbd>🔇</kbd></th><td data-i18n="key_mute">Cisza w odtwarzaczu; głośność telewizora zostaje bez zmian.</td></tr>
+          <tr><th scope="row"><kbd data-i18n="key_back">Wstecz</kbd></th><td data-i18n="key_back_desc">Zamyka menu albo pasek; z obrazu wraca do listy kanałów, a z listy pyta „Wyjdź z aplikacji?”.</td></tr>
+        </tbody>
+      </table>
+        <h2 data-i18n="help_epg">PROGRAM TV (EPG)</h2>
+        <table class="keys-table">
+          <tbody>
+            <tr><th scope="row"><kbd>EPG</kbd></th><td data-i18n="help_epg_grid">Przycisk „EPG” w nagłówku otwiera siatkę wszystkich kanałów na osi czasu. Program, który leci teraz, ma podpis LIVE, a pionowa linia pokazuje bieżącą godzinę.</td></tr>
+            <tr><th scope="row"><kbd>◀ ▶</kbd></th><td data-i18n="help_epg_pan">Przewijanie osi czasu o godzinę — dowolnie daleko w obie strony.</td></tr>
+            <tr><th scope="row"><kbd data-i18n="today">Dziś</kbd></th><td data-i18n="help_epg_days">Skok o dzień wstecz albo w przód; obok są pola daty i godziny do wskazania dokładnej chwili.</td></tr>
+            <tr><th scope="row"><kbd>OK</kbd></th><td data-i18n="help_epg_pick">Zakończony program włącza się z archiwum, a ten, który leci teraz — na żywo.</td></tr>
+          </tbody>
+        </table>
+
+        <h2 data-i18n="help_catchup">ARCHIWUM I CATCH-UP</h2>
+        <p class="hint" data-i18n="help_catchup_list">Przycisk „EPG” na pasku odtwarzacza otwiera listę programów oglądanego kanału: poprzednie, bieżący i następne. Wybierz pozycję i naciśnij OK, żeby odtworzyć ją z archiwum.</p>
+        <p class="hint" data-i18n="help_catchup_live">Przycisk „Na żywo” (na pasku odtwarzacza albo nad listą programów) wraca do bieżącej chwili.</p>
+        <p class="hint" data-i18n="help_catchup_days">Ile dni wstecz sięga archiwum, ustawia „Dni EPG/archiwum wstecz” w zakładce „Ogólne”, a wielkość skoku — „Krok przewijania archiwum”.</p>
+        <p class="hint" data-i18n="help_catchup_note">Kanał bez archiwum pokaże komunikat zamiast obrazu, a kanał bez EPG dostaje nagrania godzinowe — dzięki temu archiwum zostaje użyteczne.</p>
+
+        <h2 data-i18n="help_touch">TELEFON I TABLET</h2>
+        <p class="hint" data-i18n="help_touch_bar">Te same akcje są na pasku u dołu obrazu — wystarczy dotknąć. Tylko tutaj, bez pilota, pasek ma także „Kanał” (menu opcji) i „Wstecz”, i zawija się do kilku rzędów.</p>
+        <p class="hint" data-i18n="help_touch_back">Wyjście z obrazu: przycisk „Wstecz” na pasku albo systemowy przycisk wstecz na telefonie.</p>
+
+        <h2 data-i18n="help_update">AKTUALIZACJA</h2>
+        <p class="hint" data-i18n="help_update_text">Aktualizacja siedzi we własnej zakładce „Aktualizacja”: nic nie instaluje się samo, a pobranie paczki uruchamia dopiero przycisk.</p>
+      </div>
       <div class="settings-actions">
         <button id="saveSettings" tabindex="0" data-i18n="save">Zapisz i pobierz</button>
         <button id="settingsBack" tabindex="0" data-i18n="back">Wstecz</button>
@@ -198,7 +254,12 @@
   <main id="archiveScreen" class="screen hidden">
     <header>
       <div><strong id="archiveTitle" data-i18n="archive">Archiwum</strong><span id="archiveSubtitle"></span></div>
-      <nav><button id="archiveClose" tabindex="0" data-i18n="back">Wstecz</button></nav>
+      <nav>
+        <!-- „Na żywo” wraca do bieżącej chwili na tym kanale (także z listy
+             programów otwartej przyciskiem EPG w odtwarzaczu) -->
+        <button id="archiveLive" tabindex="0" class="labeled-button" data-i18n="osd_live">⏵ Na żywo</button>
+        <button id="archiveClose" tabindex="0" data-i18n="back">Wstecz</button>
+      </nav>
     </header>
     <section id="programs" class="programs"></section>
   </main>

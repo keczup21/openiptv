@@ -4,6 +4,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.KeyEvent;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebSettings;
@@ -16,6 +17,11 @@ public class MainActivity extends BridgeActivity {
 
     private static final String PREFS = "openiptv_cache";
     private static final String KEY = "lastVersion";
+
+    /* Czy w interfejsie jest odtwarzacz (ustawia app.js przez most
+       setPlayerMode). Tylko wtedy oddajemy stronie klawisze multimedialne
+       pilota — poza odtwarzaczem zostają systemowi. */
+    private boolean playerMode = false;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -74,9 +80,53 @@ public class MainActivity extends BridgeActivity {
                         }
                     });
                 }
+
+                /* interfejs mówi, że na ekranie jest odtwarzacz — od tego
+                   momentu klawisze ⏵‖ / ⏹ pilota trafiają do strony */
+                @JavascriptInterface
+                public void setPlayerMode(final boolean on) {
+                    playerMode = on;
+                }
             }, "OpenIptvNative");
         } catch (Exception ignored) {
             /* bez mostu wyjście zostaje przy systemowym przycisku Wstecz */
+        }
+    }
+
+    /* Klawisze multimedialne pilota (⏵‖, ⏸, ⏹, ⏪, ⏩). Część dekoderów
+       i WebView zjada je dla własnej sesji multimediów, więc do strony nie
+       docierało żadne zdarzenie klawiatury i przycisk play/pauza „nie działał”.
+       Gdy leci obraz, przekazujemy taki klawisz do app.js
+       (window.__openiptvKey) i zatrzymujemy go tutaj — jedno naciśnięcie to
+       jedna akcja. Poza odtwarzaczem klawisz idzie dalej, systemowi. */
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (playerMode && isMediaKey(keyCode)) {
+            WebView webView = getBridge() != null ? getBridge().getWebView() : null;
+            if (webView != null) {
+                if (event.getRepeatCount() == 0) {
+                    webView.evaluateJavascript(
+                        "(function(){try{return window.__openiptvKey?window.__openiptvKey(" +
+                        keyCode + "):''}catch(e){return ''}})()",
+                        null);
+                }
+                return true;
+            }
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+
+    private static boolean isMediaKey(int keyCode) {
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+            case KeyEvent.KEYCODE_MEDIA_PLAY:
+            case KeyEvent.KEYCODE_MEDIA_PAUSE:
+            case KeyEvent.KEYCODE_MEDIA_STOP:
+            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
+            case KeyEvent.KEYCODE_MEDIA_REWIND:
+                return true;
+            default:
+                return false;
         }
     }
 

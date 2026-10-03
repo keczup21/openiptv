@@ -880,6 +880,91 @@ body.uimode-tv .favorite-button .icon { width: 36px; height: 36px; }
 .ctx-actions button.has-icon .icon { width: 24px; height: 24px; }
 body.uimode-tv .ctx-actions button.has-icon .icon { width: 28px; height: 28px; }
 
+/* ==========================================================================
+   1.21.4 — zakładki w ustawieniach, przyciski aktualizacji jak przyciski,
+   lista programów kanału (EPG w odtwarzaczu) i pasek odtwarzacza bez
+   duplikatów. Dodawane na końcu pliku, żeby nadpisać reguły bazowe.
+   ========================================================================== */
+
+/* ---------- zakładki ustawień (Ogólne / Aktualizacja / Instrukcja) ----------
+   Pasek nad treścią karty: widać wszystkie trzy pozycje naraz, wybrana jest
+   w kolorze akcentu, a pilot zmienia zakładkę strzałkami ◀ ▶ (app.js). */
+.settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 22px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.settings-tab {
+  flex: 1 1 200px;
+  justify-content: center;
+  padding: 14px 18px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+}
+.settings-tab.active {
+  color: #fff;
+  background: var(--grad);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+body.uimode-tv .settings-tab { font-size: 23px; padding: 18px 22px; }
+body.uimode-touch .settings-tab { flex: 1 1 auto; font-size: 17px; padding: 12px 14px; }
+
+/* treść zakładki — widoczna jest jedna naraz */
+.settings-panel { display: block; }
+
+/* ---------- przyciski aktualizacji: widać, że są przyciskami ----------
+   Domyślne tło przycisku było takie samo jak tło karty ustawień, więc
+   „Sprawdź aktualizacje” wyglądał jak zwykły napis. Teraz ma obwódkę, tło
+   o stopień jaśniejsze i wyraźną reakcję na najechanie i naciśnięcie. */
+.update-row button {
+  flex: 1 1 260px;
+  padding: 16px 22px;
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+}
+.update-row button:hover { border-color: var(--accent); background: #222b3e; }
+body.light .update-row button:hover { background: #e2e8f7; }
+.update-row #installUpdate {
+  color: #fff;
+  background: var(--grad);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+body.uimode-tv .update-row button { font-size: 22px; padding: 18px 24px; }
+
+/* ---------- lista programów kanału (przycisk EPG w odtwarzaczu) ---------- */
+.program-title-row { display: flex; align-items: center; gap: 10px; margin-top: 5px; }
+.program .program-title-row .program-title { margin-top: 0; flex: 1; min-width: 0; }
+.program .program-note { display: block; margin-top: 5px; color: var(--faint); font-size: 15px; }
+/* program, który leci teraz: obwódka akcentu i podpis LIVE przy tytule */
+.program.now { border-color: var(--accent); }
+.program.now time { color: var(--accent); }
+/* program, który dopiero będzie: widoczny, ale nie do wyboru (brak archiwum) */
+.program.future { opacity: .55; }
+.program.future:disabled { cursor: default; }
+
+/* ---------- pasek odtwarzacza: część przycisków tylko na dotykowym ekranie ---
+   Menu opcji kanału i wyjście do listy są na telewizorze pod klawiszami
+   MENU / trzymane OK i Wstecz, więc na pasku byłyby duplikatem. Na telefonie
+   i tablecie nie ma pilota, dlatego te dwa przyciski tam zostają. */
+body.uimode-tv .osd-touch-only { display: none; }
+
+/* dłuższy pasek (pauza, od początku, poprzedni, następny, EPG, na żywo,
+   wycisz) zawija się do dwóch rzędów zamiast wychodzić za krawędź obrazu */
+body.uimode-tv .osd-actions { flex-wrap: wrap; }
+
 
 
 

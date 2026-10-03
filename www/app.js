@@ -21,7 +21,7 @@
      był natychmiastowy i nie przepisywał za każdym razem megabajtów danych. */
   var BLOBS_KEY = "openiptvBlobs";
   var BLOB_FIELDS = ["playlistFileText", "epgFileText", "playlistFileName", "epgFileName"];
-  var APP_VERSION = "1.21.3";
+  var APP_VERSION = "1.21.4";
   var SCHEMA_VERSION = 4;
 
   /* „Ostatnio oglądane”: kanał trafia na listę po 10 s oglądania,
@@ -44,6 +44,10 @@
   /* Ile pozycji archiwum rysujemy naraz — 7 dni po kilkadziesiąt programów to
      setki przycisków; resztę i tak „chowa” filtr dni w ustawieniach. */
   var ARCHIVE_MAX = 240;
+  /* Ile godzin w przód pokazuje lista programów otwarta z odtwarzacza (przycisk
+     „EPG” na pasku) — tyle wystarczy, żeby zobaczyć, co będzie dalej, bez
+     rysowania całego EPG dnia. */
+  var ARCHIVE_AHEAD = 12 * 3600000;
   /* Ile kanałów pokazuje program TV (EPG). Przy 5000 kanałów nie da się
      zbudować całej siatki bez zamrożenia interfejsu, a i tak nikt nie
      przewija 5000 wierszy pilotem — resztę zawęża się kategorią. */
@@ -74,6 +78,10 @@
     /* chwila, w której użytkownik zatrzymał kanał na żywo (0 = nie zatrzymał);
        wznowienie wraca dokładnie w to miejsce — patrz resumePlayback() */
     livePauseAt: 0,
+    /* kiedy ostatnio obsłużyliśmy klawisz multimedialny pilota (⏵‖ / ⏹).
+       Jedno naciśnięcie ma dać jedną akcję, a część dekoderów wysyła klawisz
+       dopiero na zwolnieniu — patrz mediaKeyAction() i keyup niżej. */
+    mediaKeyAt: 0,
     currentSource: "",
     altSource: "",
     retryCount: 0,
@@ -140,6 +148,16 @@
     /* zegar przesuwający linię bieżącej godziny (działa tylko na widocznym
        programie TV — pilnuje tego showScreen) */
     lineTimer: null
+  };
+
+  /* Ekran „Archiwum / programy kanału”. Ten sam ekran obsługuje dwa wejścia:
+     z listy kanałów (nagrania z ostatnich dni) i z odtwarzacza (wszystkie
+     programy oglądanego kanału: poprzednie, bieżący i następne). Pamięta więc,
+     skąd przyszedł i dokąd wraca klawisz „Wstecz”. */
+  var archive = {
+    channel: null,
+    fromPlayer: false,
+    returnTo: "browserScreen"
   };
 
   var DEFAULTS = {
@@ -262,12 +280,12 @@
     osd_back: "✕ Wstecz",
     osd_pause: "⏸ Pauza",
     osd_play: "⏵ Wznów",
-    osd_hint_live: "OK – pasek • ⏵‖ – pauza/wznów • ▲ ▼ – kanał • ◀ ▶ – cofnij / do przodu • MENU – opcje",
-    osd_hint_archive: "OK – pasek • ⏵‖ – pauza/wznów • ▲ ▼ – kanał • ◀ ▶ – przewijanie • ⏩ na końcu – na żywo",
+    osd_hint_live: "OK – pasek • ⏵‖ – pauza/wznów • ▲ ▼ – kanał • ◀ ▶ – cofnij / do przodu • EPG – programy kanału • MENU – opcje • Wstecz – wyjście",
+    osd_hint_archive: "OK – pasek • ⏵‖ – pauza/wznów • ▲ ▼ – kanał • ◀ ▶ – przewijanie • EPG – programy kanału • Wstecz – wyjście",
     osd_now: "Teraz:",
     osd_next_label: "Następnie:",
     osd_paused: "PAUZA",
-    osd_epg: "📅 Program TV",
+    osd_epg: "📅 EPG",
     osd_mute: "🔇 Wycisz",
     osd_unmute: "🔊 Dźwięk",
     osd_muted: "WYCISZONE",
@@ -333,7 +351,42 @@
     key_stop: "Zatrzymanie obrazu — to samo co pauza.",
     key_mute: "Cisza w odtwarzaczu; głośność telewizora zostaje bez zmian.",
     key_back: "Wstecz",
-    key_back_desc: "Zamyka menu albo pasek; z obrazu wraca do listy kanałów, a z listy pyta „Wyjdź z aplikacji?”."
+    key_back_desc: "Zamyka menu albo pasek; z obrazu wraca do listy kanałów, a z listy pyta „Wyjdź z aplikacji?”.",
+
+    /* ---------- 1.21.4 — zakładki w ustawieniach i EPG w odtwarzaczu ---------- */
+    tab_general: "Ogólne",
+    tab_update: "Aktualizacja",
+    tab_help: "Instrukcja",
+    tabs_hint: "Zakładki ustawień: ◀ ▶ zmieniają zakładkę, ▼ wchodzi w treść.",
+    help_title: "JAK KORZYSTAĆ Z APLIKACJI",
+    help_intro: "Poradnik w trzech krokach: źródło kanałów, poruszanie się pilotem i odtwarzacz z archiwum.",
+    help_setup: "1. ŹRÓDŁO KANAŁÓW",
+    help_setup_text: "Playlistę wpisuje się w zakładce „Ogólne”: adres M3U, plik z pamięci urządzenia albo login Xtream. Po zapisaniu kanały, EPG i archiwum pobierają się same.",
+    help_nav: "2. PORUSZANIE SIĘ",
+    help_nav_move: "Strzałki chodzą po przyciskach, grupach i liście kanałów — podświetlenie zawsze widać.",
+    help_nav_ok: "Wybierz podświetloną pozycję: kategorię, kanał albo przycisk.",
+    help_nav_menu: "Menu opcji kanału bez trzymania OK — to samo, co przytrzymane OK na kafelku kanału.",
+    help_nav_search: "Pole szukania. Wychodzi się z niego strzałkami: ▼ do listy kanałów, ◀ na początku tekstu do grup, ▶ na końcu do paska u góry.",
+    help_nav_back: "Zamyka nakładkę albo wraca o ekran wstecz. Na liście kanałów pyta, czy wyjść z aplikacji.",
+    help_epg: "PROGRAM TV (EPG)",
+    help_epg_grid: "Przycisk „EPG” w nagłówku otwiera siatkę wszystkich kanałów na osi czasu. Program, który leci teraz, ma podpis LIVE, a pionowa linia pokazuje bieżącą godzinę.",
+    help_epg_pan: "Przewijanie osi czasu o godzinę — dowolnie daleko w obie strony.",
+    help_epg_days: "Skok o dzień wstecz albo w przód; obok są pola daty i godziny do wskazania dokładnej chwili.",
+    help_epg_pick: "Zakończony program włącza się z archiwum, a ten, który leci teraz — na żywo.",
+    help_catchup: "ARCHIWUM I CATCH-UP",
+    help_catchup_list: "Przycisk „EPG” na pasku odtwarzacza otwiera listę programów oglądanego kanału: poprzednie, bieżący i następne. Wybierz pozycję i naciśnij OK, żeby odtworzyć ją z archiwum.",
+    help_catchup_live: "Przycisk „Na żywo” (na pasku odtwarzacza albo nad listą programów) wraca do bieżącej chwili.",
+    help_catchup_days: "Ile dni wstecz sięga archiwum, ustawia „Dni EPG/archiwum wstecz” w zakładce „Ogólne”, a wielkość skoku — „Krok przewijania archiwum”.",
+    help_catchup_note: "Kanał bez archiwum pokaże komunikat zamiast obrazu, a kanał bez EPG dostaje nagrania godzinowe — dzięki temu archiwum zostaje użyteczne.",
+    help_touch: "TELEFON I TABLET",
+    help_touch_bar: "Te same akcje są na pasku u dołu obrazu — wystarczy dotknąć. Tylko tutaj, bez pilota, pasek ma także „Kanał” (menu opcji) i „Wstecz”, i zawija się do kilku rzędów.",
+    help_touch_back: "Wyjście z obrazu: przycisk „Wstecz” na pasku albo systemowy przycisk wstecz na telefonie.",
+    help_update: "AKTUALIZACJA",
+    help_update_text: "Aktualizacja siedzi we własnej zakładce „Aktualizacja”: nic nie instaluje się samo, a pobranie paczki uruchamia dopiero przycisk.",
+    epg_list_title: "Program • {name}",
+    epg_list_hint: "poprzednie • teraz • następne",
+    epg_list_days: " • {days} dni wstecz",
+    epg_list_future: "jeszcze nie było"
   };
 
   /* TŁUMACZENIA — angielski */
@@ -428,12 +481,12 @@
     osd_back: "✕ Back",
     osd_pause: "⏸ Pause",
     osd_play: "⏵ Resume",
-    osd_hint_live: "OK – info bar • ⏵‖ – pause/resume • ▲ ▼ – channel • ◀ ▶ – back / forward • MENU – options",
-    osd_hint_archive: "OK – info bar • ⏵‖ – pause/resume • ▲ ▼ – channel • ◀ ▶ – seek • ⏩ at the end – live",
+    osd_hint_live: "OK – info bar • ⏵‖ – pause/resume • ▲ ▼ – channel • ◀ ▶ – back / forward • EPG – channel guide • MENU – options • Back – exit",
+    osd_hint_archive: "OK – info bar • ⏵‖ – pause/resume • ▲ ▼ – channel • ◀ ▶ – seek • EPG – channel guide • Back – exit",
     osd_now: "Now:",
     osd_next_label: "Next:",
     osd_paused: "PAUSED",
-    osd_epg: "📅 TV guide",
+    osd_epg: "📅 EPG",
     osd_mute: "🔇 Mute",
     osd_unmute: "🔊 Sound",
     osd_muted: "MUTED",
@@ -499,7 +552,42 @@
     key_stop: "Freeze the picture — the same as pause.",
     key_mute: "Mutes the player; the TV volume is left untouched.",
     key_back: "Back",
-    key_back_desc: "Closes the menu or the bar; from the player it goes back to the channel list, and from the list it asks “Quit the app?”."
+    key_back_desc: "Closes the menu or the bar; from the player it goes back to the channel list, and from the list it asks “Quit the app?”.",
+
+    /* ---------- 1.21.4 — settings tabs and the channel guide in the player ---------- */
+    tab_general: "General",
+    tab_update: "Update",
+    tab_help: "Manual",
+    tabs_hint: "Settings tabs: ◀ ▶ switch the tab, ▼ enters the content.",
+    help_title: "HOW TO USE THE APP",
+    help_intro: "A guide in three steps: the channel source, moving around with the remote, and the player with archive.",
+    help_setup: "1. CHANNEL SOURCE",
+    help_setup_text: "The playlist goes in the “General” tab: an M3U address, a file from the device, or Xtream credentials. After saving, channels, EPG and archive load on their own.",
+    help_nav: "2. MOVING AROUND",
+    help_nav_move: "The arrow keys walk through buttons, categories and the channel list — the highlight is always visible.",
+    help_nav_ok: "Picks the highlighted item: a category, a channel or a button.",
+    help_nav_menu: "Channel options menu without holding OK — the same as holding OK on a channel card.",
+    help_nav_search: "The search box. Leave it with the arrows: ▼ to the channel list, ◀ at the start of the text to the categories, ▶ at the end to the top bar.",
+    help_nav_back: "Closes an overlay or goes one screen back. On the channel list it asks whether to quit the app.",
+    help_epg: "TV GUIDE (EPG)",
+    help_epg_grid: "The “EPG” button in the header opens a grid of all channels on a time axis. The programme on air carries a LIVE tag and the vertical line marks the current time.",
+    help_epg_pan: "Shifts the time axis by an hour — as far back or forward as you like.",
+    help_epg_days: "Jumps a day back or forward; the date and time fields next to it jump to an exact moment.",
+    help_epg_pick: "A finished programme plays from the archive, the one on air goes live.",
+    help_catchup: "ARCHIVE AND CATCH-UP",
+    help_catchup_list: "The “EPG” button on the player bar opens the programme list of the channel you watch: previous, current and next. Pick one and press OK to play it from the archive.",
+    help_catchup_live: "The “Live” button (on the player bar or above the programme list) returns to the current moment.",
+    help_catchup_days: "How many days back the archive goes is set by “EPG/archive days back” in the “General” tab, and the jump size by “Archive seek step”.",
+    help_catchup_note: "A channel without archive shows a message instead of the picture, and a channel without EPG gets hourly recordings — so the archive stays useful.",
+    help_touch: "PHONE AND TABLET",
+    help_touch_bar: "The same actions sit on the bar at the bottom of the picture — just tap. Only here, without a remote, the bar also carries “Channel” (options menu) and “Back”, and wraps into a few rows.",
+    help_touch_back: "Leaving the picture: the “Back” button on the bar or the system back button on the phone.",
+    help_update: "UPDATES",
+    help_update_text: "Updates live in their own “Update” tab: nothing installs itself, and only the button downloads the package.",
+    epg_list_title: "Guide • {name}",
+    epg_list_hint: "previous • now • next",
+    epg_list_days: " • {days} days back",
+    epg_list_future: "not aired yet"
   };
 
   var I18N = { pl: I18N_PL, en: I18N_EN };
@@ -974,11 +1062,24 @@
     selectGroup("@recent", document.querySelector(".category.active"));
   }
 
+  /* Android TV / Fire TV: natywny odbiornik musi wiedzieć, że na ekranie jest
+     odtwarzacz — tylko wtedy oddaje stronie klawisze multimedialne pilota
+     ⏵‖ / ⏹ (MainActivity.onKeyDown -> window.__openiptvKey). Bez mostu
+     (webOS, przeglądarka, stary APK) nic się nie dzieje. */
+  function notifyNativePlayer(on) {
+    var bridge = window.OpenIptvNative;
+    if (!bridge || !bridge.setPlayerMode) return;
+    try {
+      bridge.setPlayerMode(!!on);
+    } catch (error) { /* starszy APK bez tego mostu */ }
+  }
+
   function showScreen(id) {
     if (id === "browserScreen") refreshRecentGroup();
     for (var i = 0; i < SCREENS.length; i++) {
       $(SCREENS[i]).classList.toggle("hidden", SCREENS[i] !== id);
     }
+    notifyNativePlayer(id === "playerScreen");
     /* zegar linii bieżącej godziny chodzi tylko na widocznym programie TV */
     if (id !== "guideScreen") stopGuideNowLine();
     window.setTimeout(function () {
@@ -995,6 +1096,82 @@
   }
 
   /* =======================  USTAWIENIA (FORMULARZ)  ======================= */
+
+  /* ==========================  ZAKŁADKI USTAWIEŃ  ==========================
+     Trzy zakładki trzymają porządek: „Ogólne” (sama aplikacja — profil,
+     źródła, EPG, odtwarzanie, wygląd i język), „Aktualizacja” (tylko wydania
+     i instalacja paczki) oraz „Instrukcja” (poradnik obsługi pilota). Pasek
+     zakładek jest nad treścią, a pilot zmienia zakładkę strzałkami ◀ ▶
+     (obsługa klawiszy w sekcji OBSŁUGA PILOTA) i wchodzi w treść klawiszem ▼. */
+
+  var SETTINGS_TABS = ["general", "update", "help"];
+  var settingsTab = "general";
+
+  function settingsTabName(name) {
+    return SETTINGS_TABS.indexOf(name) < 0 ? "general" : name;
+  }
+
+  function settingsTabId(name) {
+    return "settingsTab" + name.charAt(0).toUpperCase() + name.slice(1);
+  }
+
+  function settingsPanelId(name) {
+    return "settingsPanel" + name.charAt(0).toUpperCase() + name.slice(1);
+  }
+
+  function showSettingsTab(name) {
+    settingsTab = settingsTabName(name);
+    for (var i = 0; i < SETTINGS_TABS.length; i++) {
+      var key = SETTINGS_TABS[i];
+      var on = key === settingsTab;
+      var tab = $(settingsTabId(key));
+      var panel = $(settingsPanelId(key));
+      if (tab) {
+        tab.classList.toggle("active", on);
+        tab.setAttribute("aria-selected", on ? "true" : "false");
+      }
+      if (panel) panel.classList.toggle("hidden", !on);
+    }
+  }
+
+  /* ◀ ▶ na pasku zakładek: sąsiednia zakładka (z zawijaniem na końcach) */
+  function stepSettingsTab(direction) {
+    var index = SETTINGS_TABS.indexOf(settingsTab);
+    if (index < 0) index = 0;
+    var next = SETTINGS_TABS[(index + direction + SETTINGS_TABS.length) % SETTINGS_TABS.length];
+    showSettingsTab(next);
+    var tab = $(settingsTabId(next));
+    if (tab && tab.focus) tab.focus();
+  }
+
+  /* ▼ z paska zakładek: fokus wchodzi w treść widocznej zakładki. Zakładka
+     „Instrukcja” jest samym tekstem, więc gdy nie ma w niej czego sfokusować,
+     fokus idzie po prostu niżej (do „Zapisz i pobierz” / „Wstecz”) — inaczej
+     z paska nie dałoby się zjechać w dół. */
+  function focusSettingsPanel() {
+    var target = entryFocusTarget($(settingsPanelId(settingsTab)));
+    if (target && target.focus) {
+      target.focus();
+      return;
+    }
+    focusNearest(40);
+  }
+
+  /* fokus na zakładce, w której użytkownik był ostatnio */
+  function focusSettingsTabs() {
+    var tab = $(settingsTabId(settingsTab));
+    if (tab && tab.focus) tab.focus();
+  }
+
+  function bindSettingsTabs() {
+    for (var i = 0; i < SETTINGS_TABS.length; i++) {
+      var name = SETTINGS_TABS[i];
+      var tab = $(settingsTabId(name));
+      if (tab) tab.onclick = (function (chosen) {
+        return function () { showSettingsTab(chosen); };
+      })(name);
+    }
+  }
 
   function openSettings() {
     $("archiveDays").value = String(settings.archiveDays);
@@ -1022,7 +1199,12 @@
     applyUiMode();
     refreshProfileSelect();
     loadProfileIntoForm(activeProfile());
+    /* otwieramy tę zakładkę, w której użytkownik był ostatnio */
+    showSettingsTab(settingsTab);
     showScreen("settingsScreen");
+    /* fokus na widocznej zakładce — showScreen() stawia go na pierwszym
+       przycisku karty, a to nie zawsze jest zakładka otwarta */
+    window.setTimeout(focusSettingsTabs, 60);
   }
 
   function refreshProfileSelect() {
@@ -2630,17 +2812,31 @@
       pad2(to.getHours()) + ":" + pad2(to.getMinutes());
   }
 
-  function openArchive(channel) {
+  /* Ekran „Archiwum / programy kanału”. Dwa wejścia na ten sam ekran:
+       • z listy kanałów — nagrania z ostatnich dni (ustawienie „dni wstecz”),
+       • z odtwarzacza (opts.fromPlayer) — wszystkie programy oglądanego
+         kanału: poprzednie, bieżący i następne, żeby wybrać materiał
+         z archiwum albo wrócić do bieżącej chwili.
+     Program, który jeszcze się nie zaczął, jest nieaktywny (archiwum go nie
+     ma), a ten, który leci teraz, dostaje podpis LIVE i odtwarza się od
+     początku. */
+  function openArchive(channel, options) {
+    var opts = options || {};
+    var fromPlayer = !!opts.fromPlayer;
     state.selectedChannel = channel;
-    $("archiveTitle").textContent = t("archive_title") + channel.name;
+    archive.channel = channel;
+    archive.fromPlayer = fromPlayer;
+    /* „Wstecz” wraca do obrazu tylko wtedy, gdy coś tam jeszcze leci —
+       pilnuje tego closeArchive() */
+    archive.returnTo = fromPlayer ? "playerScreen" : "browserScreen";
 
     var days = channel.catchupDays > 0 ? Math.min(channel.catchupDays, settings.archiveDays) : settings.archiveDays;
-    $("archiveSubtitle").textContent = days + t("days_back");
-
     var now = Date.now();
     var from = now - 86400000 * days;
+    /* lista otwarta z odtwarzacza pokazuje też to, co dopiero będzie */
+    var until = fromPlayer ? now + ARCHIVE_AHEAD : now;
     var entries = programsFor(channel).filter(function (program) {
-      return program.start >= from && program.start < now && program.end > program.start;
+      return program.start >= from && program.start < until && program.end > program.start;
     });
 
     /* brak EPG → pozycje godzinowe, żeby archiwum było nadal użyteczne */
@@ -2655,6 +2851,13 @@
       }
     }
 
+    $("archiveTitle").textContent = fromPlayer
+      ? t("epg_list_title", { name: channel.name })
+      : t("archive_title") + channel.name;
+    $("archiveSubtitle").textContent = fromPlayer
+      ? t("epg_list_hint") + t("epg_list_days", { days: days })
+      : days + t("days_back");
+
     var container = $("programs");
     container.textContent = "";
     entries.sort(function (a, b) {
@@ -2665,22 +2868,71 @@
       entries = entries.slice(0, ARCHIVE_MAX);
     }
     entries.forEach(function (program) {
-      var button = document.createElement("button");
-      button.className = "program";
-      button.tabIndex = 0;
-      var time = document.createElement("time");
-      time.textContent = formatRange(program.start, program.end);
-      button.appendChild(time);
-      var label = document.createElement("span");
-      label.textContent = program.title;
-      button.appendChild(label);
-      button.onclick = function () {
-        playChannel(channel, program, "archiveScreen");
-      };
-      container.appendChild(button);
+      container.appendChild(programEntry(channel, program, fromPlayer));
     });
 
     showScreen("archiveScreen");
+  }
+
+  /* jedna pozycja listy programów: godzina, tytuł, podpis LIVE dla programu,
+     który leci teraz, i brak wyboru dla tego, co dopiero będzie */
+  function programEntry(channel, program, fromPlayer) {
+    var now = Date.now();
+    var isNow = program.start <= now && program.end > now;
+    var isFuture = program.start > now;
+
+    var button = document.createElement("button");
+    button.className = "program" + (isNow ? " now" : "") + (isFuture ? " future" : "");
+    button.tabIndex = 0;
+
+    var time = document.createElement("time");
+    time.textContent = formatRange(program.start, program.end);
+    button.appendChild(time);
+
+    var row = document.createElement("span");
+    row.className = "program-title-row";
+    var label = document.createElement("span");
+    label.className = "program-title";
+    label.textContent = program.title;
+    row.appendChild(label);
+    if (isNow) {
+      var live = document.createElement("em");
+      live.className = "guide-live";
+      live.textContent = t("live");
+      row.appendChild(live);
+    }
+    button.appendChild(row);
+
+    if (isFuture) {
+      var note = document.createElement("span");
+      note.className = "program-note";
+      note.textContent = t("epg_list_future");
+      button.appendChild(note);
+      button.disabled = true;
+    } else {
+      button.onclick = function () {
+        /* Z listy otwartej w odtwarzaczu wracamy potem do listy kanałów (była
+           tylko wyborem materiału), a z listy kanałów — do archiwum. */
+        playChannel(channel, program, fromPlayer ? "browserScreen" : "archiveScreen");
+      };
+    }
+    return button;
+  }
+
+  /* Powrót z archiwum / listy programów. Do obrazu wracamy tylko wtedy, gdy
+     coś tam jeszcze leci: po wyjściu z odtwarzacza kanał jest już zatrzymany
+     i ekran odtwarzacza byłby czarnym prostokątem bez obrazu. */
+  function closeArchive() {
+    var target = archive.returnTo === "playerScreen" && state.watchChannel ? "playerScreen" : "browserScreen";
+    archive.returnTo = "browserScreen";
+    archive.fromPlayer = false;
+    showScreen(target);
+  }
+
+  /* „Na żywo” nad listą programów: wraca do bieżącej chwili na tym kanale */
+  function playArchiveLive() {
+    if (!archive.channel) return;
+    playChannel(archive.channel, null, "archiveScreen");
   }
 
   /* ==============================  CATCH-UP  ============================== */
@@ -2813,6 +3065,53 @@
     return source.replace(/\.ts(\?.*)?$/i, ".m3u8$1");
   }
 
+  /* ----------  sesja multimediów: ⏵‖ i ⏹ na pilocie ----------
+     Na Androidzie i Fire TV system kieruje przyciski pilota do sesji
+     multimediów strony, a nie do zdarzeń klawiatury — bez zarejestrowania
+     akcji przycisk play/pauza nie robił nic. Akcje są te same co na pasku
+     (pauza / wznowienie / przewijanie), a stan sesji zmienia się razem
+     z obrazem, więc pilot widzi, czy kanał gra. */
+  var mediaSessionBound = false;
+
+  function updateMediaSession() {
+    var session = navigator.mediaSession;
+    var video = $("video");
+    var inPlayer = !$("playerScreen").classList.contains("hidden");
+    if (session) {
+      try {
+        session.playbackState = inPlayer && video && !video.paused ? "playing" : "paused";
+      } catch (error) { /* starsze WebView nie znają stanu sesji */ }
+    }
+    /* nazwa kanału i programu na wyświetlaczu pilota (AVRCP) */
+    if (!session || !inPlayer || !state.watchChannel || typeof window.MediaMetadata !== "function") return;
+    try {
+      session.metadata = new window.MediaMetadata({
+        title: state.watchProgram ? state.watchProgram.title : state.watchChannel.name,
+        artist: state.watchChannel.name,
+        album: state.watchProgram ? t("catchup") : t("live")
+      });
+    } catch (error2) { /* bez metadanych przyciski i tak działają */ }
+  }
+
+  function bindMediaSession() {
+    var session = navigator.mediaSession;
+    if (!session || typeof session.setActionHandler !== "function") return;
+    if (!mediaSessionBound) {
+      mediaSessionBound = true;
+      var handlers = {
+        play: resumePlayback,
+        pause: pausePlayback,
+        stop: pausePlayback,
+        seekbackward: function () { seekBy(-1); },
+        seekforward: function () { seekBy(1); }
+      };
+      for (var name in handlers) {
+        try { session.setActionHandler(name, handlers[name]); } catch (error) { /* brak obsługi */ }
+      }
+    }
+    updateMediaSession();
+  }
+
   function bindVideoEvents(video) {
     video.addEventListener("playing", function () {
       $("playerError").classList.add("hidden");
@@ -2831,12 +3130,14 @@
       }, 10000);
       updateOsd();
       scheduleOsdHide();
+      updateMediaSession();
     });
 
     video.addEventListener("pause", function () {
       markWatchedTime();
       clearTimeout(state.recentTimer);
       updateOsd();
+      updateMediaSession();
       /* obraz zatrzymany — pasek informacyjny zostaje na ekranie */
       clearTimeout(state.osdTimer);
       state.osdTimer = null;
@@ -3210,7 +3511,14 @@
     /* kanał trafi na listę „Ostatnio oglądane” dopiero po 10 s oglądania */
     startRecentWatch(channel);
 
-    state.playerReturn = returnScreen || "browserScreen";
+    /* Ekran, do którego wraca „Wstecz” po wyjściu z obrazu. Akcje wykonywane
+       wewnątrz odtwarzacza (następny program, „od początku”, „na żywo”,
+       wznowienie) podają jako cel playerScreen — to nie jest miejsce, do
+       którego można wrócić po zatrzymaniu kanału: nie ma tam już czego
+       odtwarzać i zostawał czarny prostokąt bez obrazu i bez paska.
+       Dlatego taki cel zachowuje poprzednią wartość (lista kanałów). */
+    if (returnScreen && returnScreen !== "playerScreen") state.playerReturn = returnScreen;
+    else if (!state.playerReturn) state.playerReturn = "browserScreen";
     state.isArchive = !!program;
     state.retryCount = 0;
     state.cycle = 0;
@@ -3238,6 +3546,8 @@
 
     showScreen("playerScreen");
     $("playerError").classList.add("hidden");
+    /* klawisze ⏵‖ / ⏹ pilota: system kieruje je do sesji multimediów */
+    bindMediaSession();
     var badge = $("playerBadge");
     badge.textContent = program ? t("catchup") : t("live");
     badge.classList.toggle("archive", !!program);
@@ -3327,7 +3637,15 @@
     video.pause();
     video.removeAttribute("src");
     video.load();
-    showScreen(state.playerReturn);
+    /* Zabezpieczenie: ekran odtwarzacza bez kanału to czarny prostokąt, więc
+       nigdy nie wracamy na niego po zatrzymaniu obrazu. */
+    var target = state.playerReturn && state.playerReturn !== "playerScreen"
+      ? state.playerReturn
+      : "browserScreen";
+    showScreen(target);
+    /* sesja multimediów gaśnie razem z obrazem, żeby pilot nie pauzował
+       odtwarzacza, którego już nie ma */
+    updateMediaSession();
   }
 
   /* Krok przewijania z ustawień („Krok przewijania archiwum”: 5 / 10 / 30 s) */
@@ -4074,6 +4392,11 @@
     return button;
   }
 
+  /* Pasek odtwarzacza. Kolejność jest stała, a przyciski zmieniają się razem
+     z tym, co naprawdę da się zrobić: „Od początku” jest wtedy, gdy znamy
+     program, „Na żywo” tylko wtedy, gdy obraz nie jest na żywo, a „EPG”
+     otwiera listę programów oglądanego kanału. Menu opcji kanału zostaje pod
+     klawiszem MENU / trzymanym OK — nie dublujemy go na pasku. */
   function buildOsdActions() {
     var bar = $("playerActions");
     if (!bar) return;
@@ -4083,27 +4406,39 @@
 
     bar.appendChild(osdButton("play", t("osd_pause"), togglePlayPause));
 
+    if (state.isArchive || currentProgram(channel)) {
+      bar.appendChild(osdButton("restart", t("osd_restart"), restartWatching));
+    }
+
     if (state.isArchive) {
       /* nagranie: skok po archiwum i powrót do bieżącego programu */
       bar.appendChild(osdButton("prev", t("osd_prev_program"), function () { watchProgramStep(-1); }));
       bar.appendChild(osdButton("next", t("osd_next_program"), function () { watchProgramStep(1); }));
-      bar.appendChild(osdButton("restart", t("osd_restart"), restartWatching));
-      bar.appendChild(osdButton("live", t("osd_live"), goLive));
-    } else if (currentProgram(channel)) {
-      bar.appendChild(osdButton("restart", t("osd_restart"), restartWatching));
     }
 
-    /* EPG oglądanego kanału: siatka staje na tym kanale, a Wstecz wraca do
-       obrazu (nie do listy kanałów) */
-    bar.appendChild(osdButton("epg", t("osd_epg"), function () {
-      openGuide({ channel: state.watchChannel, returnTo: "playerScreen" });
-    }));
+    /* EPG oglądanego kanału: lista programów (poprzednie, bieżący i następne),
+       z której wybiera się materiał do odtworzenia z archiwum */
+    bar.appendChild(osdButton("epg", t("osd_epg"), openPlayerGuide));
+
+    if (state.isArchive) bar.appendChild(osdButton("live", t("osd_live"), goLive));
+
     bar.appendChild(osdButton("mute", t("osd_mute"), toggleMute));
 
+    /* Na telewizorze te dwie akcje są na pilocie (MENU / trzymane OK oraz
+       Wstecz), więc przyciski na pasku byłyby tylko duplikatem — dlatego
+       pokazują się wyłącznie w trybie dotykowym (CSS: .osd-touch-only).
+       Na telefonie to jedyna droga do menu opcji kanału i do wyjścia. */
     bar.appendChild(osdButton("options", t("ctx_menu"), function () {
       openContextMenu(state.watchChannel);
-    }));
-    bar.appendChild(osdButton("back", t("osd_back"), stopPlayback));
+    })).classList.add("osd-touch-only");
+    bar.appendChild(osdButton("back", t("osd_back"), stopPlayback)).classList.add("osd-touch-only");
+  }
+
+  /* „EPG” na pasku odtwarzacza: lista programów oglądanego kanału. Wybranie
+     pozycji odtwarza ją z archiwum, „Na żywo” wraca do bieżącej chwili. */
+  function openPlayerGuide() {
+    if (!state.watchChannel) return;
+    openArchive(state.watchChannel, { fromPlayer: true });
   }
 
   /* ⏵‖ (przycisk na pasku i klawisz play/pauza na pilocie). */
@@ -4499,7 +4834,9 @@
       return true;
     }
     if (!$("archiveScreen").classList.contains("hidden")) {
-      showScreen("browserScreen");
+      /* archiwum wraca tam, skąd przyszło: do obrazu, jeśli coś tam jeszcze
+         leci, a inaczej do listy kanałów (patrz closeArchive) */
+      closeArchive();
       return true;
     }
     if (!$("guideScreen").classList.contains("hidden")) {
@@ -4623,6 +4960,38 @@
 
   var WEBOS_KEYS = platformInfo.os === "webos";
 
+  /* -------------------  PILOT: PLAY/PAUZA I KLAWISZE MEDIALNE  -------------------
+     Jeden przycisk ⏵‖ (albo ⏹) na pilocie, a tyle różnych kodów klawiszy między
+     dekoderami: 85 / 126 / 127 / 86 na Androidzie i Fire TV, 415 / 19 na webOS.
+     Część pilotów wysyła przy tym samą nazwę klawisza („MediaPlayPause”) i kod 0,
+     więc bierzemy pod uwagę jedno i drugie. WEBOS_KEYS pilnuje tylko kodów,
+     które na innych platformach znaczą coś innego (19 to na Androidzie ▲). */
+
+  var MEDIA_KEY_TOGGLE = [85, 126, 179, 415];   // ⏵‖ oraz samo ⏵
+  var MEDIA_KEY_PAUSE = [86, 93, 127];          // ⏹ oraz samo ⏸
+
+  function mediaKeyAction(keyCode, keyName) {
+    var name = String(keyName || "");
+    if (name === "MediaPlayPause" || name === "MediaPlay") return "toggle";
+    if (name === "MediaPause" || name === "MediaStop") return "pause";
+    if (MEDIA_KEY_TOGGLE.indexOf(keyCode) >= 0) return "toggle";
+    if (MEDIA_KEY_PAUSE.indexOf(keyCode) >= 0) return "pause";
+    if (keyCode === 19 && WEBOS_KEYS) return "toggle";
+    return "";
+  }
+
+  function runMediaKey(action) {
+    if (action === "toggle") togglePlayPause();
+    else if (action === "pause") pausePlayback();
+  }
+
+  /* Część dekoderów oddaje klawisze multimedialne dopiero na zwolnieniu
+     klawisza, a część nie oddaje ich wcale — wtedy trafiają do nas mostem
+     natywnym (patrz window.__openiptvKey i MainActivity). */
+  function mediaKeyHandledRecently() {
+    return !!state.mediaKeyAt && Date.now() - state.mediaKeyAt < 1200;
+  }
+
   document.addEventListener("keydown", function (event) {
     var key = event.keyCode;
     var inPlayer = !$("playerScreen").classList.contains("hidden");
@@ -4692,17 +5061,15 @@
         return;
       }
 
-      /* play/pauza: klawisze multimedialne obu platform */
-      if (key === 415 || key === 85 || key === 126 || (key === 19 && WEBOS_KEYS)) {
+      /* ⏵‖ / ⏹ / pauza: klawisze multimedialne obu platform (patrz
+         mediaKeyAction — kody różnią się między dekoderami) */
+      var media = mediaKeyAction(key, event.key);
+      if (media) {
         event.preventDefault();
-        togglePlayPause();
-        return;
-      }
-      /* ⏹ / pauza: na kanale na żywo pauza zapamiętuje chwilę zatrzymania,
-         żeby wznowienie wróciło dokładnie w to miejsce */
-      if (key === 127 || key === 93) {
-        event.preventDefault();
-        pausePlayback();
+        /* jedno naciśnięcie = jedna akcja, także gdy klawisz jest trzymany */
+        state.mediaKeyAt = Date.now();
+        if (event.repeat) return;
+        runMediaKey(media);
         return;
       }
       /* MENU (webOS/Tizen 18, Android 82) — opcje kanału; tutaj są też wszystkie
@@ -4761,6 +5128,21 @@
       return;
     }
 
+    /* Ustawienia: na pasku zakładek ◀ ▶ zmieniają zakładkę, a ▼ wchodzi w jej
+       treść (pilot nie ma Tab, więc bez tego z paska nie dałoby się zejść) */
+    var focused = document.activeElement;
+    var onTab = !!(focused && focused.getAttribute && focused.getAttribute("data-tab"));
+    if (onTab && (key === 37 || key === 39 || key === 412 || key === 417)) {
+      event.preventDefault();
+      stepSettingsTab(key === 37 || key === 412 ? -1 : 1);
+      return;
+    }
+    if (onTab && key === 40) {
+      event.preventDefault();
+      focusSettingsPanel();
+      return;
+    }
+
     /* Program TV: ◀ ▶ przewijają oś czasu o godzinę (dowolnie daleko w obie
        strony); przy polach daty/godziny strzałki obsługuje sam formularz */
     if (inGuide && (key === 37 || key === 39 || key === 412 || key === 417)) {
@@ -4797,10 +5179,37 @@
   });
 
   /* Akcję przypisujemy dopiero na zwolnieniu OK — dzięki temu jedno naciśnięcie
-     wykonuje dokładnie jedną rzecz (krótkie OK albo menu przy trzymaniu). */
+     wykonuje dokładnie jedną rzecz (krótkie OK albo menu przy trzymaniu).
+     Tutaj też domykamy klawisze multimedialne: jeśli dekoder wysłał je tylko
+     na zwolnieniu (bez keydown, którego nie obsłużyliśmy chwilę wcześniej),
+     obraz zatrzyma się albo ruszy mimo wszystko. */
   document.addEventListener("keyup", function (event) {
     if (event.keyCode === 13 || event.keyCode === 23 || event.keyCode === 66) releaseOk();
+    if ($("playerScreen").classList.contains("hidden")) return;
+    if (mediaKeyHandledRecently()) return;
+    var media = mediaKeyAction(event.keyCode, event.key);
+    if (!media) return;
+    state.mediaKeyAt = Date.now();
+    runMediaKey(media);
   });
+
+  /* Most dla natywnej obsługi klawiszy multimedialnych (Android TV / Fire TV).
+     MainActivity oddaje je tutaj, gdy na ekranie jest odtwarzacz — inaczej
+     WebView zjada część z nich dla własnej sesji multimediów i strona nie wie
+     o naciśnięciu przycisku ⏵‖. */
+  window.__openiptvKey = function (code, name) {
+    if ($("playerScreen").classList.contains("hidden")) return "";
+    /* ⏪ / ⏩ pilota (KEYCODE_MEDIA_REWIND / FAST_FORWARD): przewijanie o krok */
+    if (code === 89 || code === 90) {
+      seekBy(code === 89 ? -1 : 1);
+      return "handled";
+    }
+    var media = mediaKeyAction(code, name);
+    if (!media) return "";
+    state.mediaKeyAt = Date.now();
+    runMediaKey(media);
+    return "handled";
+  };
 
   $("saveSettings").onclick = function () {
     var sourceType = $("sourceType").value;
@@ -5024,13 +5433,19 @@
   };
 
   $("openSettings").onclick = openSettings;
+  /* Pasek zakładek ustawień (Ogólne / Aktualizacja / Instrukcja) — kliknięcie
+     i OK na pilocie robią to samo; strzałki obsługuje keydown */
+  bindSettingsTabs();
   /* „Wstecz” w ustawieniach: wyjście bez zapisu. Formularz wczytuje wartości
      z ustawień przy każdym otwarciu, więc porzucone zmiany nie zostają w pliku
      (nic nie jest zapisywane, dopóki nie naciśniemy „Zapisz i pobierz”). */
   $("settingsBack").onclick = function () { showScreen("browserScreen"); };
   $("openGuide").onclick = function () { openGuide(); };
   var archiveClose = $("archiveClose");
-  if (archiveClose) archiveClose.onclick = function () { showScreen("browserScreen"); };
+  if (archiveClose) archiveClose.onclick = closeArchive;
+  /* „Na żywo” nad listą programów kanału: powrót do bieżącej chwili */
+  var archiveLive = $("archiveLive");
+  if (archiveLive) archiveLive.onclick = playArchiveLive;
   $("guidePrevDay").onclick = function () { guideShiftDays(-1); };
   $("guideNextDay").onclick = function () { guideShiftDays(1); };
   $("guideYesterday").onclick = function () { guideGoToDayOffset(-1); };

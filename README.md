@@ -13,8 +13,12 @@ Odtwarzacz M3U z EPG/XMLTV i obsługą paneli Xtream Codes:
 - źródła: link M3U, plik M3U albo login Xtream (serwer, użytkownik, hasło),
 - program TV (siatka kanałów na osi czasu) i mini-EPG na karcie kanału,
 - catch-up/archiwum: programy z przeszłości odtwarzane z adresu liczonego
-  ze znaczników czasu,
+  ze znaczników czasu; przycisk `EPG` na pasku odtwarzacza otwiera listę
+  programów oglądanego kanału — poprzednie, bieżący i następne — z której
+  wybiera się materiał do odtworzenia, a `Na żywo` wraca do bieżącej chwili,
 - ulubione, ostatnio oglądane, wyszukiwarka, profile źródeł,
+- ustawienia w trzech zakładkach: **Ogólne** (sama aplikacja), **Aktualizacja**
+  (tylko wydania) i **Instrukcja** (poradnik obsługi pilota),
 - interfejs po polsku i angielsku, motyw jasny i ciemny, tryb TV z obsługą
   pilota oraz wspólna obsługa klawisza Wstecz (z pytaniem o wyjście zamiast
   zamykania aplikacji z przypadku),
@@ -36,12 +40,29 @@ gęstość) i sama dobiera wielkość układu (`www/ui-scale.js`):
 | 1080p | 100% | 1920 px |
 | 4K | 100% | 1920 px |
 
-W **Ustawieniach** jest lista **Rozmiar interfejsu** — Automatyczny, 100%, 115%,
-130% i 150% — a pod nią informacja, co aplikacja wykryła (np. „Wykryty ekran:
+W **Ustawieniach** (zakładka **Ogólne**) jest lista **Rozmiar interfejsu** —
+Automatyczny, 100%, 115%, 130% i 150% — a pod nią informacja, co aplikacja
+wykryła (np. „Wykryty ekran:
 1920×1080 px, gęstość 2.0× — układ 1920 px, skala 100%”). Skala obowiązuje od
 razu: szerokość układu ustawia się jeszcze przed pierwszym rysowaniem strony,
 a gdy telewizor zmieni rozdzielczość w trakcie pracy, układ przelicza się sam.
 W przeglądarce na komputerze skalę robi zoom CSS.
+
+## Ustawienia: trzy zakładki
+
+Karta ustawień rosła razem z aplikacją i wszystko trafiało do jednej, długiej
+listy — instrukcja pilota stała między polami formularza. Teraz na górze karty
+jest pasek zakładek, a pilot zmienia zakładkę strzałkami `◀` `▶` (`▼` wchodzi
+w treść, `OK` też przełącza):
+
+| Zakładka | Co trzyma |
+|---|---|
+| **Ogólne** | wszystko o samej aplikacji: profil i źródło (M3U / plik / Xtream), adres EPG, odświeżanie EPG, archiwum i odtwarzanie, wygląd, język i rozmiar interfejsu |
+| **Aktualizacja** | tylko wydania: numer nowszej wersji, co się zmieniło i przyciski `Sprawdź aktualizacje` / `Pobierz i zainstaluj` |
+| **Instrukcja** | poradnik obsługi: źródło kanałów, poruszanie się po aplikacji, pilot w odtwarzaczu, program TV, archiwum i telefon |
+
+Przyciski `Zapisz i pobierz` oraz `Wstecz` są widoczne w każdej zakładce —
+`Wstecz` wychodzi z ustawień bez zapisu.
 
 ## Pilot w odtwarzaczu
 
@@ -56,14 +77,29 @@ bez wchodzenia fokusem w przyciski:
 | `OK` przytrzymane, `MENU` | opcje kanału i obrazu (od początku, poprzedni/następny program, na żywo, cisza, EPG, ulubione) |
 | `⏵` `⏸` / `⏹` | pauza i wznowienie. Po dłuższej pauzie kanał na żywo jest wznawiany z archiwum dokładnie od chwili zatrzymania (jeśli kanał ma archiwum), a nie od bieżącej sceny |
 | `🔇` | cisza / dźwięk (wyciszenie strumienia; głośność telewizora należy do sprzętu) |
-| `Wstecz` | `EPG` wraca do obrazu, obraz do listy, a na liście pokazuje pytanie „Wyjdź z aplikacji?” — dopiero tam wyjście kończy aplikację |
+| `Wstecz` | obraz wraca do listy kanałów, a na liście pokazuje pytanie „Wyjdź z aplikacji?” — dopiero tam wyjście kończy aplikację |
+
+`⏵‖` to jeden przycisk, a dekodery wysyłają go różnymi kodami (`85`, `126`,
+`415`…) i część z nich zjada go dla własnej sesji multimediów. Aplikacja
+obsługuje kody i nazwy tych klawiszy, rejestruje akcje w sesji multimediów,
+łapie klawisz też na zwolnieniu, a na Android TV / Fire TV `MainActivity`
+oddaje go stronie, gdy na ekranie jest odtwarzacz — dlatego play/pauza działa
+także na pilotach, na których wcześniej milczał.
+
+Pasek na dole obrazu pokazuje to, co da się zrobić w danym momencie:
+`Pauza`/`Wznów`, `Od początku`, `◀ Poprzedni` i `Następny ▶` (w archiwum),
+`EPG`, `Na żywo` (gdy obraz nie jest na żywo) i `Wycisz`. Menu opcji kanału
+i wyjście do listy są poza paskiem na telewizorze — tam są pod `MENU` /
+trzymanym `OK` i pod klawiszem `Wstecz`, więc nie dublują się na ekranie. Na
+telefonie i tablecie oba te przyciski zostają na pasku, bo tam nie ma pilota.
 
 Fokus na przycisku paska zmienia strzałki w nawigację po pasku (tak działa mysz,
 dotyk i pilot z fokusem) — na obrazie strzałki zostają przy transmisji.
 Długie przytrzymanie `▲` `▼` nie przełącza kanałów seriami: jedno naciśnięcie = jedna zmiana.
 
-Ta sama instrukcja jest w aplikacji, na telewizorze: **Ustawienia → „PILOT W ODTWARZACZU”**
-(tabela klawiszy po polsku i angielsku, razem z krótkim opisem każdej akcji).
+Ta sama instrukcja jest w aplikacji, na telewizorze:
+**Ustawienia → zakładka „Instrukcja”** (tabele klawiszy po polsku i angielsku,
+razem z krótkim opisem każdej akcji).
 
 **Wyjście z aplikacji** (`Wstecz` na liście kanałów) potwierdza się przyciskiem.
 Na Android TV / Fire TV zamknięcie okna z tej strony robi most
@@ -104,14 +140,16 @@ kanałach.
 
 ## Plik M3U i EPG z pamięci
 
-Rodzaj źródła wybiera się w **Ustawieniach**, przyciskami **Link do M3U**,
-**Plik M3U** i **Xtream (login)** — wszystkie pozycje widać naraz, a wybrana
-jest podświetlona kolorem. Rozwijana lista systemowa odpadała, bo na telewizorze
-rysowała się ciemno na ciemnym i nie było widać, co jest zaznaczone.
+Rodzaj źródła wybiera się w **Ustawieniach** (zakładka **Ogólne**), przyciskami
+**Link do M3U**, **Plik M3U** i **Xtream (login)** — wszystkie pozycje widać
+naraz, a wybrana jest podświetlona kolorem. Rozwijana lista systemowa odpadała,
+bo na telewizorze rysowała się ciemno na ciemnym i nie było widać, co jest
+zaznaczone.
 
 Playlistę i program TV można też wskazać plikiem z pamięci urządzenia albo
-z karty USB — w **Ustawieniach**, przyciskami **„Wybierz plik M3U”** i
-**„Wybierz plik EPG”**. Na każdej platformie robi to coś innego:
+z karty USB — w **Ustawieniach** (zakładka **Ogólne**), przyciskami
+**„Wybierz plik M3U”** i **„Wybierz plik EPG”**. Na każdej platformie robi to
+coś innego:
 
 | Platforma | Co się dzieje po naciśnięciu |
 |---|---|
@@ -302,7 +340,7 @@ npm run test:seek     # przewijanie archiwum, pauza/wznowienie, 🔇 i ▲▼ ka
 npm run test:update   # porównanie wersji i wybór paczki .apk / .ipk
 npm run test:ui       # skalowanie interfejsu (www/ui-scale.js)
 npm run test:pick     # wybór pliku M3U/EPG: przyciski, plugin natywny, błędy odczytu
-npm run test:nav      # menu główne: grupy, szukanie, ikony SVG, pasek podpowiedzi pilota
+npm run test:nav      # menu główne i ustawienia: zakładki, ikony SVG, pasek odtwarzacza, klawisze multimedialne
 npm run test:splash   # ekran startowy Androida: tło, znak, wymiary, środek
 npm run test:notes    # opis wydania: tylko wydawana wersja, bez ogona z poprzednich
 ```
@@ -313,8 +351,8 @@ rozjechać z aplikacją.
 
 ## Aktualizacja z aplikacji
 
-Aktualizacja nigdy nie dzieje się sama. Wejście w **Ustawienia** (sekcja
-AKTUALIZACJE) sprawdza cicho wydanie na GitHubie (`releases/latest`) i — gdy jest
+Aktualizacja nigdy nie dzieje się sama. Wejście w **Ustawienia** (zakładka
+**Aktualizacja**) sprawdza cicho wydanie na GitHubie (`releases/latest`) i — gdy jest
 nowsze od `APP_VERSION` — pokazuje tylko informację: numer wersji i krótko, co się
 zmieniło (pierwsze punkty opisu wydania). Nic nie pobiera się w tle, a instalację
 uruchamia dopiero naciśnięcie przycisku `Pobierz i zainstaluj`. Przycisk
