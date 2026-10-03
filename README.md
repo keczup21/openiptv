@@ -1,4 +1,8 @@
-# OpenIPTV
+# TeleIPTV
+
+> Do wersji 1.22.0 aplikacja nazywała się **OpenIPTV**. Tożsamość paczki
+> (`pl.openiptv.player`) się nie zmieniła, więc wersja 2.0.0 wchodzi jako
+> zwykła aktualizacja — profile, ustawienia i ulubione zostają na urządzeniu.
 
 Jeden kod web (`www/`), dwa wydania:
 
@@ -11,7 +15,9 @@ Warstwa interfejsu i cała logika są wspólne, różni się tylko opakowanie.
 Odtwarzacz M3U z EPG/XMLTV i obsługą paneli Xtream Codes:
 
 - źródła: link M3U, plik M3U albo login Xtream (serwer, użytkownik, hasło),
-- program TV (siatka kanałów na osi czasu) i mini-EPG na karcie kanału,
+- program TV (siatka wszystkich kanałów kategorii na osi czasu, z pionową linią
+  bieżącej godziny i podpisem `LIVE` przy tym, co leci) i mini-EPG na karcie
+  kanału,
 - catch-up/archiwum: programy z przeszłości odtwarzane z adresu liczonego
   ze znaczników czasu; przycisk `EPG` na pasku odtwarzacza otwiera listę
   programów oglądanego kanału — poprzednie, bieżący i następne — z której
@@ -25,7 +31,9 @@ Odtwarzacz M3U z EPG/XMLTV i obsługą paneli Xtream Codes:
 - rozmiar interfejsu dobierany do rozdzielczości ekranu (720p / 1080p / 4K)
   albo wybierany ręcznie w 100–150% — dla czytelności z dużej odległości,
 - aktualizacja bez przymusu: ustawienia tylko pokazują, że jest nowsza wersja
-  i krótko co się zmieniło, a aktualizację uruchamia przycisk.
+  i krótko co się zmieniło, a aktualizację uruchamia przycisk,
+- zegar w rogu obrazu: włączany w ustawieniach, pokazuje godzinę `HH:MM`
+  w lewym górnym rogu, ale tylko podczas oglądania programu.
 
 ## Rozmiar interfejsu
 
@@ -47,6 +55,22 @@ wykryła (np. „Wykryty ekran:
 razu: szerokość układu ustawia się jeszcze przed pierwszym rysowaniem strony,
 a gdy telewizor zmieni rozdzielczość w trakcie pracy, układ przelicza się sam.
 W przeglądarce na komputerze skalę robi zoom CSS.
+
+## Zegar w rogu obrazu
+
+W **Ustawieniach** (zakładka **Ogólne**) jest przełącznik **Zegar w rogu
+obrazu**. Włączony pokazuje godzinę w formacie `HH:MM` w lewym górnym rogu
+i tylko podczas oglądania programu:
+
+| Gdzie jesteś | Zegar |
+|---|---|
+| odtwarzacz z kanałem (na żywo, archiwum, pauza) | widoczny w lewym górnym rogu |
+| lista kanałów, program TV, ustawienia | schowany |
+
+Domyślnie jest wyłączony — włącza go ten, kto chce. Zegar nie łapie kliknięć ani
+fokusu (`pointer-events: none`), więc pilot dalej chodzi po obrazie, a budzik
+przelicza się raz na pełną minutę (między tyknięciami nic nie chodzi). Po powrocie
+do aplikacji z tła zegar od razu pokazuje właściwą godzinę.
 
 ## Ustawienia: trzy zakładki
 
@@ -72,12 +96,12 @@ bez wchodzenia fokusem w przyciski:
 | Klawisz | Co robi |
 |---|---|
 | `▲` `▼` (CH+ / CH−) | następny / poprzedni kanał z listy, którą widzisz (z kategorii, wyszukiwania), z zawijaniem na końcach |
-| `◀` `▶` / `⏪` `⏩` | przewijanie o krok z ustawień; w archiwum skok, na kanale na żywo `⏪` wchodzi w catch-up, a `▶` na zatrzymanym obrazie wznawia od miejsca pauzy. Po skoku pasek pisze wprost, o ile obraz przesunięto („Cofnięto o 10 s” / „Przesunięto o +10 s”), a nie „Ładowanie strumienia”; kolejne naciśnięcia pod rząd sumują się (5 × `⏩` = „Przesunięto o +50 s”) |
-| `OK` | pokaż / schowaj pasek informacyjny (mini-EPG kanału) |
+| `◀` `▶` / `⏪` `⏩` | przewijanie o krok z ustawień; w archiwum skok, na kanale na żywo `⏪` wchodzi w catch-up, a `▶` na zatrzymanym obrazie wznawia od miejsca pauzy. Po skoku komunikat („Cofnięto o 10 s” / „Przesunięto o +10 s”) widać na środku obrazu — nie tylko w pasku, który po chwili sam się chowa; kolejne naciśnięcia pod rząd sumują się (5 × `⏩` = „Przesunięto o +50 s”) |
+| `OK` | pokaż / schowaj pasek informacyjny (mini-EPG kanału); zaraz po otwarciu `▲` `▼` wchodzą w jego przyciski |
 | `OK` przytrzymane, `MENU` | opcje kanału i obrazu (od początku, poprzedni/następny program, na żywo, cisza, EPG, ulubione) |
 | `⏵` `⏸` / `⏹` | pauza i wznowienie. Po dłuższej pauzie kanał na żywo jest wznawiany z archiwum dokładnie od chwili zatrzymania (jeśli kanał ma archiwum), a nie od bieżącej sceny |
 | `🔇` | cisza / dźwięk (wyciszenie strumienia; głośność telewizora należy do sprzętu) |
-| `Wstecz` | obraz wraca do listy kanałów, a na liście pokazuje pytanie „Wyjdź z aplikacji?” — dopiero tam wyjście kończy aplikację |
+| `Wstecz` | najpierw zamyka otwarty pasek; gdy nic nie jest otwarte, obraz wraca do listy kanałów, a na liście pokazuje pytanie „Wyjdź z aplikacji?” — dopiero tam wyjście kończy aplikację |
 
 `⏵‖` to jeden przycisk, a dekodery wysyłają go różnymi kodami (`85`, `126`,
 `415`…) i część z nich zjada go dla własnej sesji multimediów. Aplikacja
@@ -99,9 +123,14 @@ i wyjście do listy są poza paskiem na telewizorze — tam są pod `MENU` /
 trzymanym `OK` i pod klawiszem `Wstecz`, więc nie dublują się na ekranie. Na
 telefonie i tablecie oba te przyciski zostają na pasku, bo tam nie ma pilota.
 
-Fokus na przycisku paska zmienia strzałki w nawigację po pasku (tak działa mysz,
-dotyk i pilot z fokusem) — na obrazie strzałki zostają przy transmisji.
+Pasek otwarty klawiszem `OK` to menu: `▲` `▼` wchodzą wtedy w jego przyciski
+(`⏸ Pauza`, `📅 EPG`…), a `◀` `▶` chodzą po nich. Z paska wychodzi się `▲` `▼`
+albo `Wstecz`, który najpierw zamyka pasek, a dopiero potem wychodzi z kanału.
+Pasek pokazany przy zmianie kanału jest tylko informacją i po chwili znika sam —
+`▲` `▼` dalej przełączają kanały, więc `CH+` działa naciśnięcie po naciśnięciu.
 Długie przytrzymanie `▲` `▼` nie przełącza kanałów seriami: jedno naciśnięcie = jedna zmiana.
+Fokus z myszy albo dotyku na przycisku paska działa tak samo — strzałki chodzą
+wtedy po pasku, a `▲` `▼` z obrazu zostają przy kanałach.
 
 Ta sama instrukcja jest w aplikacji, na telewizorze:
 **Ustawienia → zakładka „Instrukcja”** (tabele klawiszy po polsku i angielsku,
@@ -194,8 +223,8 @@ pliki, a `<wersja>` w nazwie to numer z `package.json`:
 
 | Plik | System |
 |---|---|
-| `OpenIPTV-<wersja>.apk` | Android TV / Google TV / Fire TV |
-| `OpenIPTV-<wersja>.ipk` | LG webOS |
+| `TeleIPTV-<wersja>.apk` | Android TV / Google TV / Fire TV |
+| `TeleIPTV-<wersja>.ipk` | LG webOS |
 
 Wydania są developerskie: `npm run build:android` składa paczkę `.apk` od razu po
 sklonowaniu repozytorium — nic nie trzeba przygotowywać poza nim — i dokładnie
@@ -222,7 +251,7 @@ npm run publish -- -Message "wersja 1.19.0" -Tag v1.19.0 -Release
 Ręcznie to samo robi `gh release create`, z jawnie wskazanymi paczkami i opisem:
 
 ```powershell
-gh release create vX.Y.Z dist\android\OpenIPTV-X.Y.Z.apk dist\ipk\OpenIPTV-X.Y.Z.ipk --title "OpenIPTV X.Y.Z" --notes-file dist\release-notes-X.Y.Z.md
+gh release create vX.Y.Z dist\android\TeleIPTV-X.Y.Z.apk dist\ipk\TeleIPTV-X.Y.Z.ipk --title "TeleIPTV X.Y.Z" --notes-file dist\release-notes-X.Y.Z.md
 ```
 
 ### Numeracja wersji
@@ -246,7 +275,7 @@ dostać wpis w `CHANGELOG.md`.
 ## Struktura
 
 ```
-OpenIPTV/
+TeleIPTV/
 ├─ www/                     wspólny kod aplikacji (edytuj tylko tutaj)
 │  ├─ index.html app.js styles.css ui-scale.js
 │  ├─ epg-worker.js         parser XMLTV poza wątkiem UI (fallback: app.js)
@@ -280,7 +309,7 @@ OpenIPTV/
 ```powershell
 npm install
 npm run build:webos
-# wynik: dist\ipk\OpenIPTV-<wersja>.ipk
+# wynik: dist\ipk\TeleIPTV-<wersja>.ipk
 ```
 
 `ares-package` nazywa wynik `pl.openiptv.player_<wersja>_all.ipk` (`all`, bo to
@@ -290,7 +319,7 @@ Urządzenie czyta `appinfo.json` z wnętrza paczki, więc nazwa pliku nie ma zna
 Instalacja na TV (tryb deweloperski + `ares-setup-device`):
 
 ```powershell
-ares-install -d <device> dist\ipk\OpenIPTV-<wersja>.ipk
+ares-install -d <device> dist\ipk\TeleIPTV-<wersja>.ipk
 ares-launch  -d <device> pl.openiptv.player
 ```
 
@@ -299,7 +328,7 @@ ares-launch  -d <device> pl.openiptv.player
 ```powershell
 npm install
 npm run build:android
-# wynik: dist\android\OpenIPTV-<wersja>.apk
+# wynik: dist\android\TeleIPTV-<wersja>.apk
 ```
 
 To wydanie developerskie: cała konfiguracja budowania leży w repozytorium, więc
@@ -311,7 +340,7 @@ Instalacja na Android TV / Fire TV (ADB Debugging włączone, ta sama sieć):
 
 ```powershell
 adb connect <ip>:5555
-adb install -r dist\android\OpenIPTV-<wersja>.apk
+adb install -r dist\android\TeleIPTV-<wersja>.apk
 ```
 
 Oba skrypty mają parametr `-OutDir`, którym można wskazać inny folder docelowy, np.
@@ -328,7 +357,7 @@ Oba skrypty mają parametr `-OutDir`, którym można wskazać inny folder docelo
   instalatora paczek — bez nich przycisk „Pobierz i zainstaluj” w ustawieniach
   nie otworzy systemowego instalatora na Androidzie 11+
 - motyw startowy `AppTheme.NoActionBarLaunch` (`android:background="@drawable/splash"`)
-  — ekran startowy to tło `#0a0c11` z logo OpenIPTV na środku; obrazki
+  — ekran startowy to tło `#0a0c11` z logo TeleIPTV na środku; obrazki
   w `res\drawable*\splash.png` generuje `scripts/make-icons.ps1`, żeby start
   pokazywał ten sam znak co ikona aplikacji (`npm run test:splash` tego pilnuje)
 - plugin `FilePlugin` (`OpenIptvFiles`) — wybór plików M3U/EPG dla telewizorów bez
@@ -336,6 +365,38 @@ Oba skrypty mają parametr `-OutDir`, którym można wskazać inny folder docelo
   `UpdatePlugin` (`registerPlugin`), a uprawnienie `READ_EXTERNAL_STORAGE` ma
   `maxSdkVersion="32"` (na Androidzie 13+ zbędne — patrz
   [Plik M3U i EPG z pamięci](#plik-m3u-i-epg-z-pamięci))
+
+## Strona projektu
+
+`docs/` to strona projektu dla GitHub Pages: co potrafi aplikacja, jak ją
+zainstalować i najczęstsze pytania. Lokalnie zobaczysz ją przez
+`npm run serve:docs` (http://localhost:8090).
+
+Strona jest przygotowana pod wyszukiwarki:
+
+- `<title>`, `description` i `h1` mówią wprost, co to za aplikacja i na czym
+  chodzi (LG webOS, Android TV, Google TV, Fire TV),
+- `canonical` oraz Open Graph / karta Twitter wskazują jeden adres strony,
+- dane strukturalne (`application/ld+json`) opisują aplikację
+  (`SoftwareApplication`) i pytania z sekcji **Najczęstsze pytania**
+  (`FAQPage`) — Google może pokazać je w wynikach,
+- `docs/robots.txt` i `docs/sitemap.xml` zapraszają roboty i wskazują mapę
+  strony.
+
+Żeby strona była widoczna w Google, po stronie GitHuba trzeba jeszcze:
+
+1. włączyć **Pages** (Settings → Pages → Branch: `main`, folder `/docs`),
+2. dodać stronę w [Google Search Console](https://search.google.com/search-console)
+   i zgłosić `sitemap.xml`,
+3. zmienić nazwę repozytorium na `teleiptv` (Settings → General → Repository
+   name). GitHub przekierowuje stare adresy, więc dotychczasowe linki działają
+   dalej, ale po zmianie nazwy trzeba podmienić adres strony
+   `https://keczup21.github.io/openiptv/` w `docs/index.html` (`canonical`,
+   `og:url`, `og:image`, `twitter:image` i adresy w `application/ld+json`),
+   w `docs/robots.txt` oraz w `docs/sitemap.xml`. To samo warto zrobić
+   z `UPDATE_REPO` w `www/app.js` (`keczup21/openiptv` → `keczup21/teleiptv`):
+   sprawdzanie aktualizacji na webOS chodzi przez natywny serwis, który nie
+   podąża za przekierowaniami.
 
 ## Testy
 
@@ -366,7 +427,7 @@ uruchamia dopiero naciśnięcie przycisku `Pobierz i zainstaluj`. Przycisk
 internetu.
 
 - **Android TV / Google TV / Fire TV** — `Pobierz i zainstaluj` pobiera
-  `OpenIPTV-<wersja>.apk` z tego wydania i otwiera systemowy instalator.
+  `TeleIPTV-<wersja>.apk` z tego wydania i otwiera systemowy instalator.
   Adres paczki to plik z wydania (`browser_download_url`), a nie adres API
   GitHuba — API oddaje opis wydania w JSON-ie, więc instalator odpowiadał
   wtedy „problem z analizowaniem pakietu”. Przed przekazaniem paczki systemowi
@@ -374,7 +435,7 @@ internetu.
   Pobieraniem zajmuje się `UpdatePlugin.java` (lokalny plugin Capacitora,
   plik ląduje w cache aplikacji i wychodzi przez `FileProvider`), więc
   aktualizacja nie wymaga ADB ani komputera. Potrzebna jest zgoda „Instaluj
-  nieznane aplikacje” dla OpenIPTV — gdy jej nie ma, aplikacja sama otwiera
+  nieznane aplikacje” dla TeleIPTV — gdy jej nie ma, aplikacja sama otwiera
   ekran, na którym się ją włącza.
 - **LG webOS** — system nie instaluje `.ipk` sam, więc aplikacja pokazuje
   numer wersji, nazwę paczki i adres wydania; paczkę wgrywa się z komputera

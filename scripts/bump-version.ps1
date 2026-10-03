@@ -1,8 +1,9 @@
-# OpenIPTV - podbicie numeru wersji we wszystkich miejscach naraz.
+# TeleIPTV - podbicie numeru wersji we wszystkich miejscach naraz.
 #
 # Zasada numeracji (patrz tez CHANGELOG.md):
 #   gruba zmiana (nowa funkcja, przebudowa) -> srodkowa liczba: 1.19.0 -> 1.20.0
 #   poprawka, drobiazg                      -> ostatnia liczba: 1.19.0 -> 1.19.1
+#   zmiana tozsamosci albo nazwy aplikacji  -> pierwsza liczba: 1.22.0 -> 2.0.0
 #
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File scripts/bump-version.ps1 -Version 1.20.0

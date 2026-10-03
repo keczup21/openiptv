@@ -1,11 +1,12 @@
 # Changelog
 
-Wszystkie istotne zmiany w projekcie **OpenIPTV** są tu dokumentowane.
+Wszystkie istotne zmiany w projekcie **TeleIPTV** są tu dokumentowane.
 Format oparty na [Keep a Changelog](https://keepachangelog.com/), wersje wg [SemVer](https://semver.org/).
 
 **Jak numerujemy wersje:** gruba zmiana (nowa funkcja, przebudowa) podbija
-środkową liczbę — `1.19.0 → 1.20.0`, a poprawka albo drobiazg ostatnią —
-`1.19.0 → 1.19.1`. Wszystkie cztery miejsca z numerem (`www/app.js`,
+środkową liczbę — `1.19.0 → 1.20.0`, poprawka albo drobiazg ostatnią —
+`1.19.0 → 1.19.1`, a zmiana nazwy albo tożsamości aplikacji pierwszą —
+`1.22.0 → 2.0.0`. Wszystkie cztery miejsca z numerem (`www/app.js`,
 `www/appinfo.json`, `package.json`, `android/app/build.gradle`) podbija jedna
 komenda: `npm run bump -- X.Y.Z`.
 
@@ -16,6 +17,67 @@ z wcześniejszych wersji i nie odnotowujemy samego podbicia numeru (miejsca
 z numerem opisuje akapit wyżej). Opis wydania na GitHubie powstaje z tego wpisu:
 `npm run notes` (`scripts/release-notes.js`) bierze z changeloga tylko sekcję
 wydawanej wersji.
+
+## [2.0.0] — 2026-10-03
+
+### Dodano
+- **Zegar w rogu obrazu.** W Ustawieniach (zakładka „Ogólne”) jest przełącznik
+  „Zegar w rogu obrazu”: podczas oglądania programu w lewym górnym rogu pokazuje
+  się godzina w formacie `HH:MM`. Poza obrazem — na liście kanałów, w programie TV
+  i w ustawieniach — zegara nie ma. Jest wyłączony, dopóki nie włączy go sam
+  użytkownik, więc wygląd odtwarzacza nie zmienia się nikomu bez pytania.
+- **Program TV wypełnia ekran i pokazuje wszystkie kanały.** Oś czasu bierze
+  teraz tyle godzin, ile mieści się na szerokości ekranu (3–6), a siatka rysuje
+  tylko wiersze widoczne na obrazie — reszta kanałów czeka w tle, więc nawet
+  5000 kanałów w kategorii przewija się płynnie. Dawniej lista urywała się na 60
+  kanałach („pokazano 60 z …”), a teraz podpis podaje ich liczbę („kanałów: 245”).
+- **Kafelki programu są czytelniejsze.** Wiersz jest wyższy, tytuł łamie się na
+  dwie linie zamiast kończyć wielokropkiem, pełna nazwa kanału mieści się
+  w kolumnie, a program, który leci teraz, ma u dołu pasek postępu pokazujący,
+  ile jeszcze zostało.
+- **Komunikat o przewinięciu widać na środku obrazu.** Po skoku (`◀` `▶`, `⏪` `⏩`)
+  informacja „Cofnięto o 10 s” / „Przesunięto o +10 s” pojawia się na środku
+  wideo — dawniej była tylko na pasku, który po chwili sam znikał, więc przy
+  przewijaniu zostawał sam obraz bez śladu tego, co się stało.
+
+### Zmieniono
+- **Aplikacja nazywa się TeleIPTV.** Nowa nazwa jest wszędzie: na ekranie
+  startowym, w tytule okna, pod listą kanałów, w pytaniu o wyjście, w komunikatach
+  o aktualizacji, w nazwach paczek (`TeleIPTV-<wersja>.apk` oraz `.ipk`) i na
+  stronie projektu. Tożsamość paczki (`pl.openiptv.player`) zostaje bez zmian,
+  więc nowa wersja wchodzi jako aktualizacja poprzedniej — profile, ustawienia
+  i ulubione zostają na miejscu. Aplikacja rozpoznaje przy okazji paczki ze
+  starszych wydań (`OpenIPTV-<wersja>.apk`), żeby aktualizacja z telewizora
+  dalej działała.
+- **Strona projektu jest przygotowana pod wyszukiwarki.** Tytuł i opis strony,
+  dane dla wyszukiwarek i mapa strony mówią wprost, co to za aplikacja, na czym
+  chodzi (LG webOS, Android TV, Google TV, Fire TV) i co potrafi, a na dole są
+  najczęstsze pytania — żeby dało się ją znaleźć w Google po nazwie albo po tym,
+  czego się szuka.
+- **Pasek dnia jest mniejszy.** Przyciski `‹ Dzień`, `Przedwczoraj`, `Wczoraj`,
+  `Dziś`, `Dzień ›`, pola daty i godziny oraz `Wstecz` mieszczą się w jednej
+  linii, więc siatce zostaje więcej miejsca.
+- **Programy zakończone są przygaszone tylko wtedy, gdy nie ma ich skąd
+  odtworzyć.** Materiał dostępny w archiwum jest wyraźny, więc od razu widać, co
+  da się cofnąć.
+
+### Naprawiono
+- **Uruchomienie aplikacji nie zamarza.** Program TV pobierał się i parsował
+  zaraz po wczytaniu listy kanałów — w tym samym momencie, w którym rysował się
+  ekran. Teraz rusza dopiero wtedy, gdy lista kanałów jest gotowa i pilot ma
+  fokus.
+- **Przewinięcie osi czasu i obrót ekranu nie gubią kanału pod fokusem.** Po
+  zmianie dnia albo godzin zostaje ten sam kanał, a po obrocie ekranu godziny
+  liczą się na nowo, żeby siatka dalej wypełniała szerokość.
+- **Pasek otwarty klawiszem `OK` obsługuje się strzałkami.** Pierwsze `▲` `▼`
+  wchodzi w jego przyciski (`⏸ Pauza`, `📅 EPG`…), a `◀` `▶` chodzą po nich —
+  dawniej `▼` przełączało kanał, więc do przycisków paska nie dało się dojść
+  pilotem. Z paska wychodzi się `▲` `▼` albo `Wstecz`, który najpierw zamyka
+  pasek, a dopiero potem wychodzi z kanału; pasek pokazany przy zmianie kanału
+  zostaje informacją, więc `▲` `▼` dalej zmieniają kanały jedno po drugim.
+- **Menu opcji kanału nad obrazem działa z pilota.** Strzałki chodzą po jego
+  pozycjach, a `OK` wybiera podświetloną — wcześniej w odtwarzaczu `▲` `▼`
+  przełączały kanał, a `OK` otwierało pasek zamiast wybrać pozycję z menu.
 
 ## [1.21.7] — 2026-10-03
 

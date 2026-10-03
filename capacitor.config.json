@@ -1,6 +1,6 @@
 {
   "appId": "pl.openiptv.player",
-  "appName": "OpenIPTV",
+  "appName": "TeleIPTV",
   "webDir": "www",
   "android": {
     "allowMixedContent": true,

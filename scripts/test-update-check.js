@@ -68,6 +68,22 @@ check("z wydania wybierany jest OpenIPTV-*.apk",
 asset = v.updateAssetFor(release, "ipk");
 check("dla webOS wybierany jest .ipk", !!asset && asset.name === "OpenIPTV-1.19.4.ipk", JSON.stringify(asset));
 check("brak wydania to brak paczki", v.updateAssetFor(null, "apk") === null);
+/* Nazwa paczki zmienila sie z OpenIPTV-* na TeleIPTV-* (wersja 2.0.0). Wybor
+   pliku z wydania musi znac obie: nowe wydania maja nowa nazwe, a starsze
+   (i wydania bez zmian) dalej nazywaja sie OpenIPTV-*. */
+const releaseNew = {
+  tag_name: "v2.0.0",
+  assets: [
+    { name: "TeleIPTV-2.0.0.apk", size: 4038058 },
+    { name: "OpenIPTV-1.22.0.apk", size: 4038058 }
+  ]
+};
+asset = v.updateAssetFor(releaseNew, "apk");
+check("nowa nazwa paczki (TeleIPTV-*.apk) jest rozpoznawana",
+  !!asset && asset.name === "TeleIPTV-2.0.0.apk", JSON.stringify(asset));
+asset = v.updateAssetFor({ assets: [{ name: "OpenIPTV-1.22.0.apk", size: 4038058 }] }, "apk");
+check("wydania sprzed przemianowania (OpenIPTV-*.apk) dalej sie instaluja",
+  !!asset && asset.name === "OpenIPTV-1.22.0.apk", JSON.stringify(asset));
 
 /* --- 1b. adres paczki do pobrania ---------------------------------------- */
 /* Wazne dla aktualizacji z telewizora: pole `url` z API GitHuba oddaje metadane

@@ -1,8 +1,8 @@
 {
-  "name": "openiptv",
-  "version": "1.21.7",
+  "name": "teleiptv",
+  "version": "2.0.0",
   "private": true,
-  "description": "OpenIPTV - one web codebase, two builds: webOS (.ipk) and Android / Fire TV (.apk).",
+  "description": "TeleIPTV - one web codebase, two builds: webOS (.ipk) and Android / Fire TV (.apk).",
   "engines": {
     "node": ">=18"
   },

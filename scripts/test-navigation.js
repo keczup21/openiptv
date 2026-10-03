@@ -869,6 +869,400 @@ check("klawisz wyslany dopiero na zwolnieniu tez przewija - i tylko raz",
   src.indexOf("if (seekKeyDown[seekCode]) { delete seekKeyDown[seekCode]; return; }") > 0 &&
   src.indexOf("var seekDirection = seekKeyDirection(seekCode, event.key, false);") > 0);
 
+/* --- 22. program TV: siatka okienkowa (wszystkie kanały), większe okno -------
+   Program TV rysował wiersze tylko dla 60 kanałów, a przy 5000 kanałów zaciąłby
+   telewizor. Teraz w DOM jest tylko widok z zapasem (GUIDE_CHUNK / GUIDE_OVERSCAN),
+   a brakujące kanały udają odstępy — dzięki temu siatka pokazuje wszystkie kanały
+   kategorii, a rysowanie jednej porcji jest zawsze tak samo tanie. Okno jest
+   większe (godziny liczą się z realnej szerokości ekranu, nagłówek jest mniejszy),
+   a kafelki czytelniejsze (wyższy wiersz, tytuł w dwóch liniach, pasek postępu).
+   Start EPG jest odroczony, żeby pobieranie nie zamroziło uruchomienia. */
+check("siatka pokazuje wszystkie kanaly kategorii (bez ucinania listy)",
+  src.indexOf("var GUIDE_CHUNK = 16;") > 0 &&
+  src.indexOf("var GUIDE_OVERSCAN = 24;") > 0 &&
+  src.indexOf("var GUIDE_AHEAD = 8;") > 0 &&
+  src.indexOf("GUIDE_ROWS") < 0 && src.indexOf("guide_limited") < 0 &&
+  src.indexOf('if (name === "@all") return true;') > 0);
+check("brakujace kanaly udaja odstepy o wysokosci wiersza (padding siatki)",
+  src.indexOf("function guideUpdateSpacers()") > 0 &&
+  src.indexOf("wrap.style.paddingTop = (guide.winStart * guide.rowHeight)") > 0 &&
+  src.indexOf("wrap.style.paddingBottom =") > 0 &&
+  src.indexOf("guideUpdateSpacers();") > 0);
+check("wiersze daleko nad widokiem sa usuwane, ale nie ten z fokusem",
+  src.indexOf("function guidePruneTop(limit)") > 0 &&
+  src.indexOf("if (!row || row.contains(document.activeElement)) break;") > 0);
+check("przewijanie dokłada wiersze jedna porcja na raz (siatka sie nie zacina)",
+  src.indexOf("function guideFollowScroll()") > 0 &&
+  src.indexOf("if (guide.scrollLock) return;") > 0 &&
+  src.indexOf("guideFill(Math.min(need, guideRowsOnScreen() + GUIDE_OVERSCAN * 3))") > 0 &&
+  src.indexOf('grid.setAttribute("data-guide-scroll", "1");') > 0);
+check("fokus na krawedzi widoku dokłada wiersze, zanim zabraknie programu",
+  src.indexOf("function guideEnsureAhead()") > 0 &&
+  src.indexOf("if (ahead < GUIDE_AHEAD) guideFill(GUIDE_AHEAD - ahead + GUIDE_CHUNK);") > 0 &&
+  src.indexOf("guideEnsureAhead();") > 0);
+check("okno wypelnia ekran: liczba godzin liczy sie z szerokosci siatki",
+  src.indexOf("function guideFitHours(innerWidth, channelWidth)") > 0 &&
+  src.indexOf("var GUIDE_MIN_HOURS = 3;") > 0 &&
+  src.indexOf("var GUIDE_MAX_HOURS = 6;") > 0 &&
+  src.indexOf("var GUIDE_HOUR_MIN_W = 300;") > 0 &&
+  src.indexOf('container.style.setProperty("--guide-hour", guide.hourWidth + "px");') > 0);
+check("szerokosc godziny idzie z app.js do CSS (linie godzin na kazdym wierszu)",
+  css.indexOf("var(--guide-hour, 300px)") > 0 &&
+  /\.guide-lane\s*\{[^}]*repeating-linear-gradient/.test(css));
+check("ekran jest pokazywany przed rysowaniem (godziny z realnej szerokosci)",
+  src.indexOf('showScreen("guideScreen");\n    renderGuide();') > 0 &&
+  src.indexOf("var inner = guideInnerWidth();") > 0);
+check("zmiana dnia albo godzin zostawia ten sam kanal pod fokusem",
+  src.indexOf("function guideRedraw()") > 0 &&
+  src.indexOf("guide.windowStart += dir * 24 * 3600000;") > 0 &&
+  src.indexOf("guide.windowStart += hours * 3600000;") > 0 &&
+  src.indexOf("if (rowIndex > 0) guide.anchor = rowIndex - 1;") > 0 &&
+  src.indexOf("if (inGrid) focusGuideRowBlock(rowIndex);") > 0);
+check("przycisk dnia nie cofa widoku siatki na poczatek listy",
+  src.indexOf("var inGrid = rowIndex >= 0;") > 0 &&
+  src.indexOf("var top = Math.max(0, grid.scrollTop - guideRowsOffset());") > 0 &&
+  src.indexOf("rowIndex = guide.winStart + Math.floor(top / guide.rowHeight);") > 0);
+
+check("obrot ekranu przerysowuje siatke (godziny licza sie na nowo)",
+  /window\.addEventListener\("resize", function \(\) \{[\s\S]{0,400}guideRedraw\(\);/.test(src) &&
+  src.indexOf("guide.resizeTimer = window.setTimeout(function () {") > 0);
+check("naglowek programu TV jest mniejszy (przyciski dnia w jednej linii)",
+  /#guideScreen header nav button\s*\{[^}]*padding: 10px 16px[^}]*font-size: 18px/.test(css) &&
+  /#guideScreen > header > div\s*\{[^}]*display: flex/.test(css) &&
+  css.indexOf("body.uimode-tv #guideScreen header nav button") > 0 &&
+  css.indexOf("body.uimode-tv #guideScreen header nav input") > 0);
+check("wiersz jest wyzszy, a tytul lamie sie na dwie linie",
+  /\.guide-row \{[^}]*height: 96px/.test(css) &&
+  css.indexOf("-webkit-line-clamp: 2") > 0 &&
+  src.indexOf("return height > 20 ? height : 96;") > 0 &&
+  src.indexOf("rowHeight: 96,") > 0);
+check("program, ktory leci teraz, ma pasek postepu",
+  src.indexOf('bar.className = "guide-progress"') > 0 &&
+  src.indexOf("block.appendChild(bar);") > 0 &&
+  src.indexOf("(now - p.start) / (p.end - p.start) * 100") > 0 &&
+  css.indexOf(".guide-progress {") > 0);
+check("programy z archiwum nie sa przygaszone tak samo jak te bez archiwum",
+  css.indexOf(".guide-program.past:not([disabled])") > 0 &&
+  css.indexOf(".guide-program.past:focus") > 0);
+check("napis zakresu podaje liczbe kanalow (bez „pokazano 60 z …”)",
+  src.indexOf('t("guide_count", { count: guide.items.length })') > 0 &&
+  src.indexOf('guide_count: "kanałów: {count}"') > 0 &&
+  src.indexOf('guide_count: "channels: {count}"') > 0 &&
+  src.indexOf("guide_limited") < 0);
+check("podpowiedz pilota pod siatka mowi o kanalach i powrocie do dni",
+  src.indexOf('guide_pan_hint: "◀ ▶ — przewijanie godzin • ▲ ▼ — kanały"') > 0 &&
+  src.indexOf("help_epg_pan:") > 0 &&
+  src.indexOf("▲ ▼ chodzą po kanałach") > 0);
+check("z gornego wiersza ▲ wraca do przyciskow dnia",
+  src.indexOf("if (keyCode === 38) focusGuideHeader();") > 0 &&
+  src.indexOf('var target = $("guideToday") || $("guideClose");') > 0);
+check("start EPG jest odroczony (lista kanalow rysuje sie od razu)",
+  src.indexOf("function scheduleEpgStart(profile, epgUrl)") > 0 &&
+  src.indexOf("window.requestIdleCallback(run, { timeout: 4000 })") > 0 &&
+  src.indexOf("scheduleEpgStart(profile, state.epgUrl);") > 0 &&
+  !/if \(settings\.epgReloadOnStart\) \{\s*loadEpgInBackground/.test(src));
+check("odroczony start nie ruszy bez listy kanalow ani po zmianie profilu",
+  src.indexOf("var EPG_START_DELAY_MS = 1500;") > 0 &&
+  src.indexOf("window.setTimeout(run, EPG_START_DELAY_MS)") > 0 &&
+  src.indexOf("if (!state.channels.length) return;") > 0 &&
+  src.indexOf("if (!current || current.id !== profile.id) return;") > 0 &&
+  src.indexOf("cancelEpgStart();\n    loadEpgInBackground(profile, state.epgUrl);") > 0);
+
+/* --- 23. komunikat na środku obrazu i ▲ ▼ w pasku odtwarzacza ---------------
+   Dwie rzeczy z pilota:
+     • wpis o skoku („Cofnięto o 10 s”) był tylko w pasku, a pasek chowa się sam
+       po OSD_AUTOHIDE — teraz ten sam komunikat widać na środku obrazu,
+     • ▼ po otwarciu paska klawiszem OK zmieniało kanał, więc do przycisków
+       („Pauza”, „EPG”…) nie dało się dojść. Pasek otwarty przez użytkownika jest
+       teraz menu: ▲ ▼ wchodzą w jego przyciski, a pasek pokazany przy zmianie
+       kanału zostaje informacją — ▲ ▼ dalej przełączają kanały. */
+check("komunikat o skoku jest na srodku obrazu, nie tylko w pasku",
+  html.indexOf('id="playerToast"') > 0 && html.indexOf('class="player-toast hidden"') > 0 &&
+  src.indexOf("function showPlayerToast(text, ms)") > 0 &&
+  src.indexOf("showPlayerToast(seekNotice());") > 0 &&
+  src.indexOf("var TOAST_MS = 2000;") > 0);
+check("komunikat jest wysrodkowany na wideo i nie lapie klikniec",
+  /\.player-toast\s*\{[^}]*left: 50%; top: 50%[^}]*translate\(-50%, -50%\)[^}]*pointer-events: none/.test(css) &&
+  css.indexOf("body.uimode-tv .player-toast {") > 0 &&
+  css.indexOf("body.uimode-touch .player-toast {") > 0);
+const clearMarkStart = src.indexOf("function clearSeekMark()");
+const clearMarkBody = src.slice(clearMarkStart, src.indexOf("\n  }", clearMarkStart));
+check("nowy obraz gasi komunikat razem z wpisem o skoku",
+  clearMarkStart > 0 && clearMarkBody.indexOf("hidePlayerToast();") > 0);
+
+check("pasek otwarty klawiszem OK jest menu, a nie tylko informacja",
+  src.indexOf("osdMenu: false,") > 0 &&
+  src.indexOf("function showOsd(options)") > 0 &&
+  src.indexOf("state.osdMenu = !!(options && options.menu);") > 0 &&
+  src.indexOf("else showOsd({ menu: true });") > 0 &&
+  src.indexOf("state.osdMenu = false;\n    clearTimeout(state.osdTimer);") > 0 &&
+  src.indexOf("state.osdMenu = false;\n    clearTimeout(overlayTimer);") > 0);
+check("fokus na przycisku paska (mysz, dotyk) tez znaczy menu",
+  src.indexOf("button.onfocus = function () {\n      state.osdMenu = true;") > 0);
+check("▲ ▼ po otwarciu paska wchodza w jego przyciski",
+  /if \(!onOsdButton && state\.osdMenu && osdVisible\(\) && \(key === 38 \|\| key === 40\)\) \{[\s\S]{0,120}enterOsdBar\(\);/.test(src) &&
+  src.indexOf("function enterOsdBar()") > 0 &&
+  src.indexOf("buttons[0].focus();") > 0);
+const menuBranch = src.indexOf("if (!onOsdButton && state.osdMenu && osdVisible()");
+const zapBranch = src.indexOf("zapChannel(key === 38 ? -1 : 1);");
+check("wejscie w menu stoi przed przelaczaniem kanalu",
+  menuBranch > 0 && zapBranch > menuBranch);
+check("▲ ▼ z paska wychodza z menu na obraz (kanal znowu dziala)",
+  src.indexOf("if (key === 38 || key === 40) {\n          if (!focusNearest(key)) leaveOsdBar();\n        } else {\n          focusNearest(key);\n        }") > 0 &&
+  src.indexOf("function leaveOsdBar()") > 0);
+const focusBlock = src.slice(src.indexOf("function focusNearest(keyCode)"),
+  src.indexOf("function searchArrowTarget("));
+check("nawigacja mowi, czy fokus sie ruszyl (koniec menu na krawedzi paska)",
+  focusBlock.indexOf("if (!candidates.length) return false;") > 0 &&
+  focusBlock.indexOf("return true;") > 0 && focusBlock.indexOf("return false;") > 0);
+check("Wstecz najpierw zamyka otwarty pasek, a potem wychodzi z kanalu",
+  src.indexOf("if (state.osdMenu && osdVisible()) {\n        hideOsd();\n        return true;\n      }") > 0);
+check("nakladka nad obrazem (menu opcji) ma swoje strzalki i OK",
+  src.indexOf('if ($("contextMenu") || $("exitDialog")) {') > 0 &&
+  src.indexOf("if (overlay && overlay.contains(osdFocus) && osdFocus.click) osdFocus.click();") > 0);
+check("podpowiedzi pilota i instrukcja opisuja ▲ ▼ w pasku oraz komunikat",
+  src.indexOf("a w otwartym pasku – jego przyciski") > 0 &&
+  src.indexOf("or the bar buttons while it is open") > 0 &&
+  src.indexOf("widać na środku obrazu") > 0 &&
+  src.indexOf("shows in the middle of the picture") > 0 &&
+  html.indexOf("Po skoku komunikat („Cofnięto o 10 s”) widać na środku obrazu.") > 0 &&
+  html.indexOf("Gdy pasek jest otwarty, ▲ ▼ wchodzą najpierw w jego przyciski") > 0);
+
+/* Zachowanie, nie napisy: uruchamiamy prawdziwą obsługę klawiszy z app.js na
+   atrapie ekranu odtwarzacza i patrzymy, co zrobi ▼ po otwarciu paska (OK),
+   a co przy pasku pokazanym tylko jako informacja. */
+const keyStart = src.indexOf('document.addEventListener("keydown", function (event) {');
+const keyEnd = src.indexOf("/* Akcję przypisujemy dopiero na zwolnieniu OK", keyStart);
+if (keyStart < 0 || keyEnd <= keyStart) throw new Error("Nie znalazlem obslugi klawiszy w app.js");
+/* Wycięty blok kończy się rejestracją listy („});”) — zamykamy ciało funkcji
+   i samo wywołanie, żeby całość była poprawnym fragmentem kodu. */
+const codeKeys = src.slice(keyStart, keyEnd).replace(/\n\s*\}\);\s*$/, "\n  })");
+
+function fakeClass(hidden) {
+  return {
+    hidden: !!hidden,
+    contains: function (c) { return c === "hidden" ? !!this.hidden : false; },
+    add: function (c) { if (c === "hidden") this.hidden = true; },
+    remove: function (c) { if (c === "hidden") this.hidden = false; }
+  };
+}
+function fakeEl(hidden) {
+  const el = { classList: fakeClass(hidden), clicks: 0 };
+  el.contains = function () { return false; };
+  el.focus = function () {};
+  el.click = function () { el.clicks++; };
+  el.getAttribute = function () { return null; };
+  return el;
+}
+function keyHarness(o) {
+  o = o || {};
+  const calls = { zap: [], focus: [], enter: 0, leave: 0, clicks: 0 };
+  const player = fakeEl(false);            /* ekran odtwarzacza widoczny */
+  const overlay = fakeEl(!o.overlayVisible); /* pasek widoczny albo schowany */
+  const ctxMenu = fakeEl(false);            /* menu opcji nad obrazem */
+  /* w prawdziwej nakładce fokus siedzi w środku, więc OK trafia w jej przycisk */
+  ctxMenu.contains = function () { return true; };
+  const active = fakeEl(false);
+  if (o.onOsdButton) active.getAttribute = function () { return "play"; };
+  active.click = function () { calls.clicks++; };
+  let handler = null;
+  const sandbox = {
+    state: { osdMenu: !!o.osdMenu, watchChannel: { name: "TVN" }, mediaKeyAt: 0 },
+    settings: { dpadSeek: false, osdEnabled: true },
+    $: function (id) {
+      if (id === "playerScreen") return player;
+      if (id === "playerOverlay") return overlay;
+      if (id === "contextMenu") return o.contextMenu ? ctxMenu : null;
+      if (id === "exitDialog") return null;
+      if (id === "guideScreen") return fakeEl(true);
+      return fakeEl(true);
+    },
+    document: {
+      activeElement: active,
+      addEventListener: function (type, fn) { if (type === "keydown") handler = fn; }
+    },
+    osdVisible: function () { return !!o.overlayVisible; },
+    enterOsdBar: function () { calls.enter++; return true; },
+    leaveOsdBar: function () { calls.leave++; },
+    zapChannel: function (direction) { calls.zap.push(direction); },
+    focusNearest: function (key) { calls.focus.push(key); return o.focusMoves !== false; },
+    scheduleOsdHide: function () {},
+    seekKeyDirection: function () { return 0; },
+    mediaKeyAction: function () { return ""; },
+    t: function (k) { return k; }
+  };
+  run(codeKeys, sandbox);
+  return {
+    calls: calls,
+    press: function (key) {
+      if (handler) handler({ keyCode: key, repeat: false, preventDefault: function () {} });
+    }
+  };
+}
+
+let kh = keyHarness({ osdMenu: true, overlayVisible: true });
+kh.press(40);
+check("uruchomione: ▼ po otwarciu paska wchodzi w przyciski, a nie zmienia kanalu",
+  kh.calls.enter === 1 && kh.calls.zap.length === 0,
+  JSON.stringify(kh.calls));
+
+kh = keyHarness({ osdMenu: true, overlayVisible: true });
+kh.press(38);
+check("uruchomione: ▲ przy otwartym pasku tez wchodzi w przyciski",
+  kh.calls.enter === 1 && kh.calls.zap.length === 0, JSON.stringify(kh.calls));
+
+kh = keyHarness({ osdMenu: false, overlayVisible: true });
+kh.press(40);
+kh.press(40);
+check("uruchomione: pasek-informacja zostawia ▼ przy kanalach (dwa razy = dwa kanaly)",
+  kh.calls.zap.length === 2 && kh.calls.zap[0] === 1 && kh.calls.zap[1] === 1 && kh.calls.enter === 0,
+  JSON.stringify(kh.calls));
+
+kh = keyHarness({});
+kh.press(38);
+check("uruchomione: bez paska ▲ zmienia kanal w gore",
+  kh.calls.zap.length === 1 && kh.calls.zap[0] === -1 && kh.calls.enter === 0, JSON.stringify(kh.calls));
+
+kh = keyHarness({ osdMenu: true, overlayVisible: true, onOsdButton: true });
+kh.press(39);
+check("uruchomione: ◀ ▶ na przycisku paska chodza po pasku (bez zmiany kanalu)",
+  kh.calls.focus.length === 1 && kh.calls.zap.length === 0 && kh.calls.leave === 0,
+  JSON.stringify(kh.calls));
+
+kh = keyHarness({ osdMenu: true, overlayVisible: true, onOsdButton: true, focusMoves: false });
+kh.press(38);
+check("uruchomione: ▲ z paska bez pozycji wyzej wychodzi z menu na obraz",
+  kh.calls.leave === 1 && kh.calls.zap.length === 0 && kh.calls.enter === 0,
+  JSON.stringify(kh.calls));
+
+kh = keyHarness({ osdMenu: true, overlayVisible: true, contextMenu: true });
+kh.press(38);
+check("uruchomione: w menu opcji nad obrazem ▲ nie zmienia kanalu",
+  kh.calls.zap.length === 0 && kh.calls.enter === 0 && kh.calls.focus.length === 1,
+  JSON.stringify(kh.calls));
+
+kh = keyHarness({ osdMenu: true, overlayVisible: true, contextMenu: true });
+kh.press(13);
+check("uruchomione: OK w menu opcji nad obrazem wybiera podswietlona pozycje",
+  kh.calls.clicks === 1 && kh.calls.enter === 0, JSON.stringify(kh.calls));
+
+/* --- 24. zegar w rogu obrazu ------------------------------------------------ 
+   Nowe ustawienie „Zegar w rogu obrazu”: pokazuje HH:MM w lewym górnym rogu,
+   ale wyłącznie podczas oglądania programu. Sprawdzamy jedno i drugie — że
+   przełącznik oraz sam zegar są w aplikacji, i że naprawdę pokazuje właściwą
+   godzinę (wyciągamy funkcje z app.js i uruchamiamy je na atrapie ekranu). */
+check("ustawienia maja przelacznik zegara w rogu",
+  html.indexOf('id="clockEnabled"') > 0 &&
+  html.indexOf('data-i18n="clock_enabled"') > 0 &&
+  src.indexOf("clockEnabled: false,") > 0 &&
+  src.indexOf('$("clockEnabled").onchange = function () {') > 0 &&
+  src.indexOf("settings.clockEnabled = $(\"clockEnabled\").checked;") > 0 &&
+  src.indexOf('$("clockEnabled").checked = settings.clockEnabled === true;') > 0);
+check("zegar jest elementem ekranu odtwarzacza, nie listy kanalow",
+  html.indexOf('id="cornerClock" class="corner-clock hidden"') > 0 &&
+  src.indexOf("function syncCornerClock()") > 0);
+check("zegar rusza i gasnie razem ze zmiana ekranu",
+  src.indexOf("/* zegar w rogu obrazu ma sens tylko na widocznym ekranie odtwarzacza */\n    syncCornerClock();") > 0);
+check("zegar siedzi w lewym gornym rogu i nie lapie klikniec",
+  /\.corner-clock\s*\{[^}]*left: 34px; top: 26px[^}]*pointer-events: none/.test(css) &&
+  css.indexOf("body.uimode-tv .corner-clock {") > 0 &&
+  css.indexOf("body.uimode-touch .corner-clock {") > 0);
+check("zegar wraca do wlasciwej godziny po powrocie do aplikacji",
+  src.indexOf("document.addEventListener(\"visibilitychange\", function () {") > 0 &&
+  src.indexOf("if (!document.hidden) syncCornerClock();") > 0);
+
+const clockStart = src.indexOf("var clockTimer = null;");
+const clockEnd = src.indexOf("function atLiveEdge()");
+if (clockStart < 0 || clockEnd <= clockStart) throw new Error("Nie znalazlem zegara w rogu w app.js");
+const codeClock = src.slice(clockStart, clockEnd);
+if (codeClock.indexOf("function syncCornerClock") < 0 || codeClock.indexOf("function cornerClockText") < 0) {
+  throw new Error("Wyciety blok nie ma zegara w rogu");
+}
+
+function clockHarness(o) {
+  o = o || {};
+  const calls = { shown: 0, hidden: 0, timers: [] };
+  const clock = {
+    textContent: "",
+    classList: {
+      add: function (c) { if (c === "hidden") calls.hidden++; },
+      remove: function (c) { if (c === "hidden") calls.shown++; }
+    }
+  };
+  const screen = {
+    classList: { contains: function (c) { return c === "hidden" ? !!o.screenHidden : false; } }
+  };
+  /* Czas zamrozony: `new Date()` w app.js musi zwracac stala godzine, wiec
+     podstawiamy wlasna klase, a odczyty godzin delegujemy do prawdziwego Date. */
+  const RealDate = Date;
+  const FIXED = typeof o.nowMs === "number" ? o.nowMs : 0;
+  function FakeDate(ts) {
+    this.real = new RealDate(ts === undefined ? FIXED : ts);
+  }
+  FakeDate.now = function () { return FIXED; };
+  ["getHours", "getMinutes", "getSeconds", "getMilliseconds", "getTime"].forEach(function (method) {
+    FakeDate.prototype[method] = function () { return this.real[method](); };
+  });
+
+  const sandbox = {
+    settings: { clockEnabled: o.enabled === true },
+    state: { watchChannel: o.watching === false ? null : { name: "TVN" } },
+    $: function (id) {
+      if (id === "cornerClock") return clock;
+      if (id === "playerScreen") return screen;
+      return null;
+    },
+    pad2: function (n) { return n < 10 ? "0" + n : String(n); },
+    Date: FakeDate,
+    setTimeout: function (fn, ms) { calls.timers.push(ms); return calls.timers.length; },
+    clearTimeout: function () {}
+  };
+  run(codeClock, sandbox);
+  return { api: sandbox, calls: calls, clock: clock };
+}
+
+/* 21:07:20 — do pelnej minuty zostaje 39,88 s plus zapas 120 ms */
+const CLOCK_NOW = new Date(2026, 9, 3, 21, 7, 20).getTime();
+let ck = clockHarness({ enabled: true, nowMs: CLOCK_NOW });
+ck.api.syncCornerClock();
+check("uruchomione: zegar pokazuje godzine HH:MM podczas ogladania",
+  ck.clock.textContent === "21:07" && ck.calls.shown === 1 && ck.calls.hidden === 0,
+  ck.clock.textContent + " " + JSON.stringify(ck.calls));
+check("uruchomione: tykniecie wypada rowno z pelna minuta",
+  ck.calls.timers.length === 1 && ck.calls.timers[0] === 40120,
+  JSON.stringify(ck.calls.timers));
+
+ck = clockHarness({ enabled: true });
+check("godzina jest zawsze dwucyfrowa (09:05, nie 9:5)",
+  ck.api.cornerClockText(new Date(2026, 9, 3, 9, 5).getTime()) === "09:05" &&
+  ck.api.cornerClockText(new Date(2026, 9, 3, 0, 0).getTime()) === "00:00",
+  ck.api.cornerClockText(new Date(2026, 9, 3, 9, 5).getTime()));
+
+ck = clockHarness({ enabled: false, nowMs: CLOCK_NOW });
+ck.api.syncCornerClock();
+check("wylaczony w ustawieniach: zegar sie nie pokazuje i nic nie chodzi",
+  ck.clock.textContent === "" && ck.calls.shown === 0 && ck.calls.hidden === 1 && ck.calls.timers.length === 0,
+  JSON.stringify(ck.calls));
+
+ck = clockHarness({ enabled: true, watching: false, nowMs: CLOCK_NOW });
+ck.api.syncCornerClock();
+check("bez ogladania kanalu zegar zostaje schowany (lista, EPG, ustawienia)",
+  ck.calls.shown === 0 && ck.calls.hidden === 1 && ck.calls.timers.length === 0,
+  JSON.stringify(ck.calls));
+
+ck = clockHarness({ enabled: true, screenHidden: true, nowMs: CLOCK_NOW });
+ck.api.syncCornerClock();
+check("po wyjsciu z odtwarzacza zegar gasnie",
+  ck.calls.shown === 0 && ck.calls.hidden === 1 && ck.calls.timers.length === 0,
+  JSON.stringify(ck.calls));
+
+ck = clockHarness({ enabled: true, nowMs: CLOCK_NOW });
+ck.api.syncCornerClock();
+ck.api.syncCornerClock();
+check("kolejne ustawienie budzika nie mnozy zegarow (jeden na raz)",
+  ck.calls.timers.length === 2 && ck.calls.shown === 2, JSON.stringify(ck.calls));
+
+
 console.log("");
 if (fails) { console.log("BLEDY: " + fails); process.exit(1); }
 console.log("Wszystkie sprawdzenia przeszly.");

@@ -1,4 +1,4 @@
-/* OpenIPTV — rozmiar interfejsu: rozdzielczość ekranu → skala układu.
+/* TeleIPTV — rozmiar interfejsu: rozdzielczość ekranu → skala układu.
  *
  * Ten sam projekt (1920 px szerokości) trafia na telewizory 720p, 1080p i 4K,
  * telefony oraz komputery. Moduł liczy, ile pikseli naprawdę ma ekran

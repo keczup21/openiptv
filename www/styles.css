@@ -285,9 +285,9 @@ aside {
 .guide-pan-hint { margin-left: 16px; color: var(--muted); font-size: 15px; }
 .guide-hour {
   flex: none;
-  padding: 8px 0 8px 10px;
-  color: var(--muted);
-  font-size: 16px;
+  padding: 9px 0 9px 12px;
+  color: var(--text);
+  font-size: 17px;
   font-weight: 600;
   border-left: 1px solid var(--border-soft);
 }
@@ -296,13 +296,16 @@ aside {
    przechodzi przez wszystkie kanały naraz. */
 .guide-rows { position: relative; }
 
-.guide-row { display: flex; border-bottom: 1px solid var(--border-soft); min-height: 78px; }
+/* Wysokość wiersza to zarazem krok siatki rysowanej „okienkowo”: w DOM jest
+   tylko widok z zapasem, a brakujące kanały udają odstępy — tę samą wartość
+   mierzy www/app.js (guideRowHeight), więc odstępy trafiają w piksel. */
+.guide-row { display: flex; border-bottom: 1px solid var(--border-soft); height: 96px; }
 .guide-channel {
   width: 260px;
   flex: none;
   display: flex;
   align-items: center;
-  padding: 10px 16px;
+  padding: 10px 18px;
   border-right: 1px solid var(--border-soft);
   background: var(--bg-2);
   position: sticky;
@@ -310,35 +313,49 @@ aside {
   /* nazwy kanałów przykrywają linię bieżącej godziny przy przewijaniu osi */
   z-index: 4;
 }
-.guide-channel span { font-size: 18px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.guide-channel span { font-size: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .guide-lane {
   position: relative;
   flex: none;
-  height: 78px;
+  height: 96px;
+  /* pionowe linie godzin: szerokość godziny ustawia www/app.js na siatce
+     (--guide-hour), bo program TV dzieli ekran na 3–6 godzin */
   background: repeating-linear-gradient(90deg,
-    transparent 0, transparent calc(280px - 1px),
-    var(--border-soft) calc(280px - 1px), var(--border-soft) 280px);
+    transparent 0, transparent calc(var(--guide-hour, 300px) - 1px),
+    var(--border-soft) calc(var(--guide-hour, 300px) - 1px), var(--border-soft) var(--guide-hour, 300px));
 }
 
 .guide-program {
   position: absolute;
   top: 6px;
-  height: 66px;
-  padding: 8px 10px;
+  height: 84px;
+  padding: 9px 12px;
   overflow: hidden;
   text-align: left;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: 10px;
   white-space: nowrap;
 }
-.guide-program time { display: block; font-size: 14px; color: var(--faint); }
+.guide-program time { display: block; font-size: 15px; font-weight: 600; line-height: 1.2; color: var(--faint); }
 .guide-program span { display: block; margin-top: 3px; font-size: 17px; overflow: hidden; text-overflow: ellipsis; }
 /* tytuł i podpis „LIVE” w jednej linii (podpis tylko przy programie, który
    leci teraz) */
-.guide-title-row { display: flex; align-items: center; gap: 8px; margin-top: 3px; min-width: 0; }
-.guide-program .guide-title-row span { margin-top: 0; flex: 1; min-width: 0; }
+.guide-title-row { display: flex; align-items: flex-start; gap: 8px; margin-top: 3px; min-width: 0; }
+/* Tytuł łamie się na dwie linie (na 1080p widać cały, a nie „Kt…”), a dłuższy
+   jest ucinany wielokropkiem — kafelek ma stałą wysokość. */
+.guide-program .guide-title-row span {
+  margin-top: 0;
+  flex: 1;
+  min-width: 0;
+  white-space: normal;
+  line-height: 1.2;
+  max-height: 2.4em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
 .guide-live {
   flex: none;
   padding: 1px 8px;
@@ -355,7 +372,19 @@ aside {
    materiał do catch-up). */
 .guide-program.now { border-color: var(--accent); }
 .guide-program.now time { color: var(--accent); }
-.guide-program.past { opacity: .62; }
+/* pasek postępu programu, który leci teraz — u dołu kafelka widać, ile zostało */
+.guide-progress {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+}
+/* Programy z przeszłości są przygaszone, ale te dostępne w archiwum (klikalne,
+   catch-up) zostają wyraźne — inaczej nie widać, co da się cofnąć. */
+.guide-program.past { opacity: .55; }
+.guide-program.past:not([disabled]) { opacity: .85; }
 .guide-program.past:focus, .guide-program.past:focus-visible { opacity: 1; }
 .guide-program:focus, .guide-program:focus-visible {
   background: var(--grad);
@@ -438,6 +467,56 @@ aside {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+/* komunikat na środku obrazu (np. „Cofnięto o 10 s” po skoku pilotem) — widać
+   go także wtedy, gdy pasek odtwarzacza jest już schowany, więc przewinięcie
+   nie ucieka z oczu podczas oglądania */
+.player-toast {
+  position: absolute;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 80%;
+  padding: 18px 34px;
+  background: rgba(0,0,0,.72);
+  border: 1px solid rgba(245,197,24,.45);
+  border-radius: 16px;
+  color: #f5c518;
+  font-size: 34px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  /* komunikat nie łapie kliknięć ani fokusu — pod nim jest obraz */
+  pointer-events: none;
+  z-index: 2;
+  animation: player-toast-in 160ms ease-out;
+}
+@keyframes player-toast-in {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(.94); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+body.uimode-tv .player-toast { font-size: 42px; padding: 22px 42px; }
+body.uimode-touch .player-toast { font-size: 24px; padding: 14px 24px; }
+
+/* zegar w rogu obrazu (Ustawienia → „Zegar w rogu obrazu”): przyklejony do
+   lewego górnego rogu, widoczny tylko na ekranie odtwarzacza i tylko podczas
+   oglądania — nie łapie kliknięć ani fokusu, więc pilot dalej chodzi po wideo */
+.corner-clock {
+  position: absolute;
+  left: 34px; top: 26px;
+  padding: 6px 18px;
+  background: rgba(0,0,0,.55);
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  z-index: 2;
+}
+body.uimode-tv .corner-clock { font-size: 36px; padding: 8px 24px; }
+body.uimode-touch .corner-clock { font-size: 20px; padding: 5px 14px; left: 16px; top: 14px; }
+
 .player-error {
   position: absolute;
   left: 50%; top: 50%;
@@ -979,4 +1058,51 @@ body.uimode-tv .osd-actions { flex-wrap: wrap; }
 
 
 
+
+
+
+/* ==========================================================================
+   1.22.0 — program TV (EPG): mniejszy pasek dnia, większa i czytelniejsza siatka
+   Nagłówek programu TV miał dziesięć dużych przycisków, które na telewizorze
+   zawijały się do dwóch rzędów i zjadały siatkę. Teraz pasek jest kompaktowy
+   (zakres i podpowiedź pilota w jednej linii), wiersze są wyższe — tytuł mieści
+   się w dwóch liniach — a siatka pokazuje wszystkie kanały, bo rysowana jest
+   „okienkowo” (szczegóły w renderGuide, guideFill i guideFollowScroll w app.js).
+   ========================================================================== */
+
+/* podpis zakresu i podpowiedź pilota stoją obok tytułu — nagłówek nie rośnie
+   w trzy linie, więc siatka dostaje więcej wysokości */
+#guideScreen > header > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 14px;
+  row-gap: 2px;
+  min-width: 0;
+}
+#guideScreen > header > div > span { margin-top: 0; }
+#guideScreen > header > div > strong { margin-right: 2px; }
+
+/* mniejszy pasek dnia: przyciski mieszczą się w jednej linii z polami daty */
+#guideScreen header nav { gap: 8px; }
+#guideScreen header nav button { padding: 10px 16px; font-size: 18px; }
+#guideScreen header nav input { width: 150px; padding: 10px 12px; font-size: 17px; }
+#guideScreen #guideTime { width: 110px; }
+#guideScreen header strong { font-size: 26px; }
+body.uimode-tv #guideScreen header nav { gap: 10px; }
+body.uimode-tv #guideScreen header nav button { padding: 11px 18px; font-size: 19px; }
+body.uimode-tv #guideScreen header nav input { width: 160px; padding: 11px 14px; font-size: 19px; }
+body.uimode-tv #guideScreen #guideTime { width: 120px; }
+body.uimode-tv #guideScreen header strong { font-size: 30px; }
+/* na dotykowym ekranie pasek dnia ma zostać wygodny dla palca */
+body.uimode-touch #guideScreen header nav button { padding: 10px 14px; font-size: 17px; }
+
+/* kolumna z nazwami kanałów musi się zgadzać z rogiem osi czasu (260 px) —
+   w trybie dotykowym wiersze są węższe, więc i róg się zwęża */
+body.uimode-touch .guide-corner { width: 150px; }
+/* w zwężonej kolumnie nazwa kanału musi się zmieścić bez ucinania w połowie */
+body.uimode-touch .guide-channel span { font-size: 17px; }
+
+/* nazwa kanału w dwóch liniach też się mieści (wiersz ma 96 px) */
+.guide-channel { line-height: 1.25; }
 

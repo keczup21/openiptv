@@ -15,7 +15,7 @@
   <script>
     window.OpenIPTVScale.applyViewport();
   </script>
-  <title>OpenIPTV</title>
+  <title>TeleIPTV</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -140,6 +140,7 @@
       </label>
       <p class="hint" id="screenInfo"></p>
       <label class="check-row"><input id="osdEnabled" tabindex="0" type="checkbox" checked><span data-i18n="osd_enabled">Mini-EPG na kanale (co teraz leci)</span></label>
+      <label class="check-row"><input id="clockEnabled" tabindex="0" type="checkbox"><span data-i18n="clock_enabled">Zegar w rogu obrazu (widoczny tylko podczas oglądania)</span></label>
       <p class="hint" id="platformInfo"></p>
       </div>
 
@@ -173,19 +174,19 @@
         </table>
 
         <h2 data-i18n="player_keys">PILOT W ODTWARZACZU</h2>
-      <p class="hint" data-i18n="player_keys_hint">Tak działa pilot, gdy leci kanał albo archiwum. Ustawienie „◀ ▶ przewija” dotyczy tylko strzałek — ⏪ ⏩ przewijają zawsze. Na dotykowym ekranie te same akcje są na pasku u dołu obrazu.</p>
+      <p class="hint" data-i18n="player_keys_hint">Tak działa pilot, gdy leci kanał albo archiwum. Ustawienie „◀ ▶ przewija” dotyczy tylko strzałek — ⏪ ⏩ przewijają zawsze. Na dotykowym ekranie te same akcje są na pasku u dołu obrazu. Gdy pasek jest otwarty, ▲ ▼ wybierają jego przyciski.</p>
       <table class="keys-table">
         <tbody>
-          <tr><th scope="row"><kbd>OK</kbd></th><td data-i18n="key_ok_short">Pasek z nazwą kanału, programem i postępem: pokaż albo schowaj.</td></tr>
+          <tr><th scope="row"><kbd>OK</kbd></th><td data-i18n="key_ok_short">Pasek z nazwą kanału, programem i postępem: pokaż albo schowaj. Przy otwartym pasku ▲ ▼ przechodzą na jego przyciski (pauza, EPG…).</td></tr>
           <tr><th scope="row"><kbd>OK</kbd></th><td data-i18n="key_ok_hold">Przytrzymaj około sekundy: menu opcji kanału (ulubione, archiwum, program TV, od początku, cisza).</td></tr>
           <tr><th scope="row"><kbd>MENU</kbd></th><td data-i18n="key_menu">To samo menu opcji kanału, bez trzymania OK.</td></tr>
-          <tr><th scope="row"><kbd>▲ ▼</kbd></th><td data-i18n="key_updown">Następny i poprzedni kanał z widocznej listy (jak CH+ / CH−), z zawijaniem na końcach. Jedno naciśnięcie to jedna zmiana.</td></tr>
-          <tr><th scope="row"><kbd>◀ ▶</kbd></th><td data-i18n="key_leftright">Przewijanie o krok z ustawienia „Krok przewijania archiwum”: na nagraniu skok w tył i w przód, na kanale na żywo ◀ wchodzi w catch-up, a ▶ wznawia zatrzymany obraz.</td></tr>
+          <tr><th scope="row"><kbd>▲ ▼</kbd></th><td data-i18n="key_updown">Następny i poprzedni kanał z widocznej listy (jak CH+ / CH−), z zawijaniem na końcach. Jedno naciśnięcie to jedna zmiana. Gdy pasek jest otwarty, ▲ ▼ wchodzą najpierw w jego przyciski — kanały znowu przełącza się po wyjściu z paska.</td></tr>
+          <tr><th scope="row"><kbd>◀ ▶</kbd></th><td data-i18n="key_leftright">Przewijanie o krok z ustawienia „Krok przewijania archiwum”: na nagraniu skok w tył i w przód, na kanale na żywo ◀ wchodzi w catch-up, a ▶ wznawia zatrzymany obraz. Po skoku komunikat („Cofnięto o 10 s”) widać na środku obrazu.</td></tr>
           <tr><th scope="row"><kbd>⏪ ⏩</kbd></th><td data-i18n="key_rewff">Przewijanie pilota działa zawsze, także przy wyłączonych strzałkach; ⏩ na końcu programu wraca na żywo.</td></tr>
           <tr><th scope="row"><kbd>⏵‖</kbd></th><td data-i18n="key_playpause">Pauza i wznowienie. Po dłuższej pauzie kanał na żywo wraca do chwili zatrzymania przez catch-up, a bez archiwum obraz dogania transmisję.</td></tr>
           <tr><th scope="row"><kbd>⏹</kbd></th><td data-i18n="key_stop">Zatrzymanie obrazu — to samo co pauza.</td></tr>
           <tr><th scope="row"><kbd>🔇</kbd></th><td data-i18n="key_mute">Cisza w odtwarzaczu; głośność telewizora zostaje bez zmian.</td></tr>
-          <tr><th scope="row"><kbd data-i18n="key_back">Wstecz</kbd></th><td data-i18n="key_back_desc">Zamyka menu albo pasek; z obrazu wraca do listy kanałów, a z listy pyta „Wyjdź z aplikacji?”.</td></tr>
+          <tr><th scope="row"><kbd data-i18n="key_back">Wstecz</kbd></th><td data-i18n="key_back_desc">Zamyka otwarty pasek albo menu; gdy nic nie jest otwarte, obraz wraca do listy kanałów, a z listy pyta „Wyjdź z aplikacji?”.</td></tr>
         </tbody>
       </table>
         <h2 data-i18n="help_epg">PROGRAM TV (EPG)</h2>
@@ -224,7 +225,7 @@
     <header>
       <div class="brand">
         <svg class="brand-logo" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2"/><path d="m17 2-5 5-5-5"/></svg>
-        <div><strong>OpenIPTV <span id="appVersion" class="version-badge"></span></strong><span id="status" data-i18n="loading">Pobieranie…</span><span id="updateNotice" class="update-notice hidden"></span></div>
+        <div><strong>TeleIPTV <span id="appVersion" class="version-badge"></span></strong><span id="status" data-i18n="loading">Pobieranie…</span><span id="updateNotice" class="update-notice hidden"></span></div>
       </div>
       <nav>
         <div class="search-box">
@@ -266,7 +267,7 @@
 
   <main id="guideScreen" class="screen guide-screen hidden">
     <header>
-      <div><strong id="guideTitle" data-i18n="guide_title">Program TV</strong><span id="guideRange"></span><span id="guidePanHint" class="guide-pan-hint" data-i18n="guide_pan_hint">◀ ▶ — przewijanie godzin</span></div>
+      <div><strong id="guideTitle" data-i18n="guide_title">Program TV</strong><span id="guideRange"></span><span id="guidePanHint" class="guide-pan-hint" data-i18n="guide_pan_hint">◀ ▶ — przewijanie godzin • ▲ ▼ — kanały</span></div>
       <nav>
         <button id="guidePrevDay" tabindex="0" data-i18n="guide_prev_day">‹ Dzień</button>
         <button id="guideDayBefore" tabindex="0" data-i18n="guide_day_before">Przedwczoraj</button>
@@ -283,6 +284,12 @@
 
   <main id="playerScreen" class="screen player-screen hidden">
     <video id="video" autoplay playsinline></video>
+    <!-- komunikat na środku obrazu (np. „Cofnięto o 10 s” po skoku pilotem) —
+         widać go także wtedy, gdy pasek odtwarzacza jest schowany -->
+    <div id="playerToast" class="player-toast hidden" aria-live="polite"></div>
+    <!-- zegar w rogu (Ustawienia → „Zegar w rogu obrazu”): pokazuje godzinę HH:MM
+         tylko podczas oglądania programu, niezależnie od paska odtwarzacza -->
+    <div id="cornerClock" class="corner-clock hidden" aria-hidden="true"></div>
     <section id="playerOverlay" class="player-overlay hidden">
       <div class="osd-head">
         <span id="playerBadge" class="player-badge" data-i18n="live">LIVE</span>

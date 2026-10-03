@@ -1,4 +1,4 @@
-/* OpenIPTV - opis wydania na GitHuba, wyciety z CHANGELOG.md.
+/* TeleIPTV - opis wydania na GitHuba, wyciety z CHANGELOG.md.
    Bierze WYLACZNIE sekcje wydawanej wersji: od naglowka "## [X.Y.Z]" do
    nastepnego naglowka wersji. Do 1.21.0 opisy wydan powstawaly recznie i mialy
    ogon z poprzednich wydan (opis wydania 1.20.0 opisywal tez 1.19.4 i 1.19.3),

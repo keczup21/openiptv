@@ -1,4 +1,4 @@
-# OpenIPTV - Android build (Android TV / Google TV boxes, incl. Amazon Fire TV).
+# TeleIPTV - Android build (Android TV / Google TV boxes, incl. Amazon Fire TV).
 # Wraps the shared www/ app with Capacitor and calls Gradle to produce an APK.
 #
 # Usage:
@@ -6,7 +6,7 @@
 #   powershell -ExecutionPolicy Bypass -File scripts/build-android.ps1 -OutDir D:\builds
 #
 # Buduje wersje developerska (Gradle assembleDebug) i zapisuje ja jako
-# OpenIPTV-<wersja>.apk - dokladnie w takiej postaci idzie na GitHuba.
+# TeleIPTV-<wersja>.apk - dokladnie w takiej postaci idzie na GitHuba.
 # Poza repozytorium nie trzeba nic przygotowywac: wystarczy sklonowane repo,
 # Node.js i Android SDK.
 #
@@ -86,7 +86,7 @@ try {
     $ver = (Get-Content (Join-Path $root "package.json") -Raw | ConvertFrom-Json).version
     $target = if ($OutDir) { $OutDir } else { Join-Path $root "dist\android" }
     New-Item -ItemType Directory -Force -Path $target | Out-Null
-    $dest = Join-Path $target "OpenIPTV-$ver.apk"
+    $dest = Join-Path $target "TeleIPTV-$ver.apk"
     Copy-Item -Force $apkPath $dest
 
     Write-Host ""

@@ -1,4 +1,4 @@
-/* OpenIPTV — wspólny kod dla webOS (.ipk) i Fire TV (.apk)
+/* TeleIPTV — wspólny kod dla webOS (.ipk) i Fire TV (.apk)
  *
  * ŹRÓDŁA (na profil):
  *   - Playlista M3U : adres URL lub plik lokalny
@@ -21,7 +21,7 @@
      był natychmiastowy i nie przepisywał za każdym razem megabajtów danych. */
   var BLOBS_KEY = "openiptvBlobs";
   var BLOB_FIELDS = ["playlistFileText", "epgFileText", "playlistFileName", "epgFileName"];
-  var APP_VERSION = "1.21.7";
+  var APP_VERSION = "2.0.0";
   var SCHEMA_VERSION = 4;
 
   /* „Ostatnio oglądane”: kanał trafia na listę po 10 s oglądania,
@@ -48,17 +48,27 @@
      „EPG” na pasku) — tyle wystarczy, żeby zobaczyć, co będzie dalej, bez
      rysowania całego EPG dnia. */
   var ARCHIVE_AHEAD = 12 * 3600000;
-  /* Ile kanałów pokazuje program TV (EPG). Przy 5000 kanałów nie da się
-     zbudować całej siatki bez zamrożenia interfejsu, a i tak nikt nie
-     przewija 5000 wierszy pilotem — resztę zawęża się kategorią. */
-  var GUIDE_ROWS = 60;
+  /* Program TV (EPG) pokazuje wszystkie kanały kategorii — i 60, i 5000 —
+     bo wiersze rysujemy „okienkowo”: w DOM jest tylko widok z zapasem
+     (GUIDE_CHUNK wierszy dokładanych przy przewijaniu), a wiersze daleko nad
+     widokiem są usuwane (GUIDE_OVERSCAN). Rysowanie jednej porcji jest zawsze
+     tak samo tanie, więc siatka nie zacina telewizora. */
+  var GUIDE_CHUNK = 16;       // ile wierszy dokładamy jednym ruchem
+  var GUIDE_OVERSCAN = 24;    // ile wierszy zostaje nad i pod widokiem
+  var GUIDE_AHEAD = 8;        // ile wierszy pod fokusem musi być gotowych
+  /* Program TV ma wypełnić ekran, więc liczba godzin wychodzi z szerokości
+     siatki (nigdy mniej niż 3 i nigdy więcej niż 6), a szerokość godziny —
+     z tego podziału. Węższa godzina niż GUIDE_HOUR_MIN_W jest nieczytelna. */
+  var GUIDE_MIN_HOURS = 3;
+  var GUIDE_MAX_HOURS = 6;
+  var GUIDE_HOUR_MIN_W = 300;
   /* Szerokość kolumny z nazwami kanałów w programie TV — tyle samo co
      w styles.css (.guide-channel i .guide-corner). Potrzebna, żeby linia
      bieżącej godziny wypadła dokładnie na początku osi czasu, także wtedy, gdy
      siatka jest jeszcze niewidoczna i nie da się jej zmierzyć. */
   var GUIDE_CHANNEL_WIDTH = 260;
-  /* Co ile przesuwamy linię bieżącej godziny: przy 280 px na godzinę minuta to
-     ~4,7 px, więc częstsze odświeżanie niczego nie zmienia. */
+  /* Co ile przesuwamy linię bieżącej godziny: przy ~300 px na godzinę minuta to
+     ~5 px, więc częstsze odświeżanie niczego nie zmienia. */
   var GUIDE_NOWLINE_MS = 20000;
   /* Jak długo kanał na żywo może stać w pauzie, żeby wznowienie poszło jeszcze
      z tego samego strumienia. Po tym czasie obraz ucieka do przodu, więc
@@ -118,6 +128,11 @@
     seekSize: 0,
     osdTimer: null,
     osdTicker: null,
+    /* Pasek otwarty klawiszem OK / dotknięciem to menu: ▲ ▼ chodzą wtedy po jego
+       przyciskach („Pauza”, „EPG”, …), a nie po kanałach. Pasek pokazany przy
+       zmianie kanału albo skoku to tylko informacja — wtedy ▲ ▼ z obrazu dalej
+       przełączają kanały (patrz obsługa klawiszy w odtwarzaczu). */
+    osdMenu: false,
     /* EPG */
     epgLoading: false,
     epgToken: 0,
@@ -142,11 +157,22 @@
   var guide = {          // widok "Program TV"
     windowStart: 0,
     hours: 3,
-    hourWidth: 280,
-    /* wiersze również rysujemy porcjami — inaczej lista 20 000 kanałów zabija TV */
+    hourWidth: 300,
+    /* wiersze rysujemy porcjami („okienkowo”): w DOM jest tylko widok z zapasem
+       (winStart … winStart + rendered), a resztę udają odstępy o wysokości
+       wiersza — patrz renderGuide, guideFill i guideFollowScroll */
     items: [],
+    winStart: 0,
     rendered: 0,
+    /* wysokość wiersza z CSS (.guide-row) — odstępy i krok przewijania muszą
+       trafiać w piksel, więc po pierwszym wierszu jest jeszcze mierzona */
+    rowHeight: 96,
+    /* wiersz, od którego ma się zacząć widok (po przewinięciu dnia/godzin albo
+       po powrocie z odtwarzacza); -1 = wybierz sam */
+    anchor: -1,
     token: 0,
+    scrollLock: false,
+    resizeTimer: null,
     /* kanał, na którym EPG ma stanąć po otwarciu (oglądany kanał), oraz ekran,
        do którego wracamy po zamknięciu programu TV */
     focusKey: "",
@@ -187,6 +213,7 @@
     uiMode: "auto",
     uiScale: "auto",
     osdEnabled: true,
+    clockEnabled: false,
     favorites: {},
     recentChannels: {},
     groupOrder: {}
@@ -222,7 +249,7 @@
     appearance: "WYGLĄD I JĘZYK", language: "Język", theme: "Motyw", theme_dark: "Ciemny", theme_light: "Jasny",
     search: "Szukaj", refresh: "Odśwież", guide_title: "Program TV", guide_prev_day: "‹ Dzień",
     guide_next_day: "Dzień ›", guide_yesterday: "Wczoraj", guide_day_before: "Przedwczoraj", today: "Dziś", date: "Data", time: "Godzina",
-    guide_pan_hint: "◀ ▶ — przewijanie godzin",
+    guide_pan_hint: "◀ ▶ — przewijanie godzin • ▲ ▼ — kanały",
     back: "Wstecz", live: "LIVE", catchup: "CATCH-UP", archive: "Archiwum",
     loading: "Pobieranie…", all: "Wszystkie", favorites: "★ Ulubione", recent: "Ostatnio oglądane",
     group_order: "⇅ Kolejność grup", group_order_done: "✓ Gotowe", order_reset: "Alfabetycznie",
@@ -274,6 +301,7 @@
     scale_source_auto: "automatyczna",
     scale_source_manual: "ustawiona ręcznie",
     osd_enabled: "Mini-EPG na kanale (co teraz leci)",
+    clock_enabled: "Zegar w rogu obrazu (widoczny tylko podczas oglądania)",
     platform_line: "Wykryto: {name} • interfejs: {mode}",
     platform_firetv: "Fire TV", platform_androidtv: "Android TV", platform_webos: "webOS",
     platform_android: "Android", platform_ios: "iOS", platform_browser: "komputer / przeglądarka",
@@ -286,8 +314,8 @@
     osd_back: "✕ Wstecz",
     osd_pause: "⏸ Pauza",
     osd_play: "⏵ Wznów",
-    osd_hint_live: "OK – pasek • ⏵‖ – pauza/wznów • ▲ ▼ – kanał • ◀ ▶ – cofnij / do przodu • EPG – programy kanału • MENU – opcje • Wstecz – wyjście",
-    osd_hint_archive: "OK – pasek • ⏵‖ – pauza/wznów • ▲ ▼ – kanał • ◀ ▶ – przewijanie • EPG – programy kanału • Wstecz – wyjście",
+    osd_hint_live: "OK – pasek • ⏵‖ – pauza/wznów • ▲ ▼ – kanał, a w otwartym pasku – jego przyciski • ◀ ▶ – cofnij / do przodu • EPG – programy kanału • MENU – opcje • Wstecz – wyjście",
+    osd_hint_archive: "OK – pasek • ⏵‖ – pauza/wznów • ▲ ▼ – kanał, a w otwartym pasku – jego przyciski • ◀ ▶ – przewijanie • EPG – programy kanału • Wstecz – wyjście",
     osd_now: "Teraz:",
     osd_next_label: "Następnie:",
     osd_paused: "PAUZA",
@@ -313,7 +341,7 @@
     epg_none: "Brak danych EPG dla tego kanału.",
     archive_day_today: "Dziś", archive_day_yesterday: "Wczoraj", archive_day_before: "Przedwczoraj",
     archive_limited: "pokazano {shown} z {total}",
-    guide_limited: "pokazano {shown} z {total} kanałów (zawęź kategorię)",
+    guide_count: "kanałów: {count}",
     osd_buffering: "Ładowanie strumienia…",
     seek_back: "Cofnięto o {s} s",
     seek_forward: "Przesunięto o +{s} s",
@@ -331,7 +359,7 @@
     update_asset: "Paczka: {name} ({size})",
     update_manual: "webOS nie instaluje paczek sam — pobierz .{ext} na komputerze i wgraj przez tryb deweloperski (ares-install). Adres: {url}",
     update_downloading: "Pobieram paczkę… {pct}%",
-    update_permission: "Włącz dla OpenIPTV zgodę na instalowanie aplikacji z nieznanych źródeł i naciśnij „Pobierz i zainstaluj” ponownie.",
+    update_permission: "Włącz dla TeleIPTV zgodę na instalowanie aplikacji z nieznanych źródeł i naciśnij „Pobierz i zainstaluj” ponownie.",
     update_installer: "Paczka pobrana — potwierdź aktualizację w instalatorze na ekranie.",
     update_err: "Nie udało się zaktualizować: {msg}",
     update_err_data: "GitHub nie zwrócił informacji o wydaniu.",
@@ -342,25 +370,25 @@
 
     /* ---------- 1.21.0 — wyjście z aplikacji pytaniem, nie od razu ---------- */
     exit_title: "Wyjść z aplikacji?",
-    exit_hint: "Zamknij OpenIPTV albo zostań na liście kanałów.",
+    exit_hint: "Zamknij TeleIPTV albo zostań na liście kanałów.",
     exit_confirm: "⏻ Wyjdź z aplikacji",
     exit_cancel: "✕ Zostań",
     exit_manual: "Ta platforma nie pozwala zamknąć okna z aplikacji — użyj przycisku zakończenia na pilocie.",
 
     /* ---------- 1.21.0 — instrukcja pilota w ustawieniach (sekcja „PILOT W ODTWARZACZU”) ---------- */
     player_keys: "PILOT W ODTWARZACZU",
-    player_keys_hint: "Tak działa pilot, gdy leci kanał albo archiwum. Ustawienie „◀ ▶ przewija” dotyczy tylko strzałek — ⏪ ⏩ przewijają zawsze. Na dotykowym ekranie te same akcje są na pasku u dołu obrazu.",
-    key_ok_short: "Pasek z nazwą kanału, programem i postępem: pokaż albo schowaj.",
+    player_keys_hint: "Tak działa pilot, gdy leci kanał albo archiwum. Ustawienie „◀ ▶ przewija” dotyczy tylko strzałek — ⏪ ⏩ przewijają zawsze. Na dotykowym ekranie te same akcje są na pasku u dołu obrazu. Gdy pasek jest otwarty, ▲ ▼ wybierają jego przyciski.",
+    key_ok_short: "Pasek z nazwą kanału, programem i postępem: pokaż albo schowaj. Przy otwartym pasku ▲ ▼ przechodzą na jego przyciski (pauza, EPG…).",
     key_ok_hold: "Przytrzymaj około sekundy: menu opcji kanału (ulubione, archiwum, program TV, od początku, cisza).",
     key_menu: "To samo menu opcji kanału, bez trzymania OK.",
-    key_updown: "Następny i poprzedni kanał z widocznej listy (jak CH+ / CH−), z zawijaniem na końcach. Jedno naciśnięcie to jedna zmiana.",
-    key_leftright: "Przewijanie o krok z ustawienia „Krok przewijania archiwum”: na nagraniu skok w tył i w przód, na kanale na żywo ◀ wchodzi w catch-up, a ▶ wznawia zatrzymany obraz.",
+    key_updown: "Następny i poprzedni kanał z widocznej listy (jak CH+ / CH−), z zawijaniem na końcach. Jedno naciśnięcie to jedna zmiana. Gdy pasek jest otwarty, ▲ ▼ wchodzą najpierw w jego przyciski — kanały znowu przełącza się po wyjściu z paska.",
+    key_leftright: "Przewijanie o krok z ustawienia „Krok przewijania archiwum”: na nagraniu skok w tył i w przód, na kanale na żywo ◀ wchodzi w catch-up, a ▶ wznawia zatrzymany obraz. Po skoku komunikat („Cofnięto o 10 s”) widać na środku obrazu.",
     key_rewff: "Przewijanie pilota działa zawsze, także przy wyłączonych strzałkach; ⏩ na końcu programu wraca na żywo.",
     key_playpause: "Pauza i wznowienie. Po dłuższej pauzie kanał na żywo wraca do chwili zatrzymania przez catch-up, a bez archiwum obraz dogania transmisję.",
     key_stop: "Zatrzymanie obrazu — to samo co pauza.",
     key_mute: "Cisza w odtwarzaczu; głośność telewizora zostaje bez zmian.",
     key_back: "Wstecz",
-    key_back_desc: "Zamyka menu albo pasek; z obrazu wraca do listy kanałów, a z listy pyta „Wyjdź z aplikacji?”.",
+    key_back_desc: "Zamyka otwarty pasek albo menu; gdy nic nie jest otwarte, obraz wraca do listy kanałów, a z listy pyta „Wyjdź z aplikacji?”.",
 
     /* ---------- 1.21.4 — zakładki w ustawieniach i EPG w odtwarzaczu ---------- */
     tab_general: "Ogólne",
@@ -379,7 +407,7 @@
     help_nav_back: "Zamyka nakładkę albo wraca o ekran wstecz. Na liście kanałów pyta, czy wyjść z aplikacji.",
     help_epg: "PROGRAM TV (EPG)",
     help_epg_grid: "Przycisk „EPG” w nagłówku otwiera siatkę wszystkich kanałów na osi czasu. Program, który leci teraz, ma podpis LIVE, a pionowa linia pokazuje bieżącą godzinę.",
-    help_epg_pan: "Przewijanie osi czasu o godzinę — dowolnie daleko w obie strony.",
+    help_epg_pan: "Przewijanie osi czasu o godzinę — dowolnie daleko w obie strony. ▲ ▼ chodzą po kanałach, a z górnego wiersza ▲ wraca do przycisków dnia.",
     help_epg_days: "Skok o dzień wstecz albo w przód; obok są pola daty i godziny do wskazania dokładnej chwili.",
     help_epg_pick: "Zakończony program włącza się z archiwum, a ten, który leci teraz — na żywo.",
     help_catchup: "ARCHIWUM I CATCH-UP",
@@ -426,7 +454,7 @@
     appearance: "APPEARANCE & LANGUAGE", language: "Language", theme: "Theme", theme_dark: "Dark", theme_light: "Light",
     search: "Search", refresh: "Refresh", guide_title: "TV Guide", guide_prev_day: "‹ Day",
     guide_next_day: "Day ›", guide_yesterday: "Yesterday", guide_day_before: "2 days ago", today: "Today", date: "Date", time: "Time",
-    guide_pan_hint: "◀ ▶ — shift hours",
+    guide_pan_hint: "◀ ▶ — shift hours • ▲ ▼ — channels",
     back: "Back", live: "LIVE", catchup: "CATCH-UP", archive: "Archive",
     loading: "Loading…", all: "All", favorites: "★ Favorites", recent: "Recently watched",
     group_order: "⇅ Group order", group_order_done: "✓ Done", order_reset: "Alphabetical",
@@ -478,6 +506,7 @@
     scale_source_auto: "automatic",
     scale_source_manual: "set by hand",
     osd_enabled: "Mini-EPG on channel (what's on now)",
+    clock_enabled: "Clock in the corner (visible only while watching)",
     platform_line: "Detected: {name} • interface: {mode}",
     platform_firetv: "Fire TV", platform_androidtv: "Android TV", platform_webos: "webOS",
     platform_android: "Android", platform_ios: "iOS", platform_browser: "desktop / browser",
@@ -490,8 +519,8 @@
     osd_back: "✕ Back",
     osd_pause: "⏸ Pause",
     osd_play: "⏵ Resume",
-    osd_hint_live: "OK – info bar • ⏵‖ – pause/resume • ▲ ▼ – channel • ◀ ▶ – back / forward • EPG – channel guide • MENU – options • Back – exit",
-    osd_hint_archive: "OK – info bar • ⏵‖ – pause/resume • ▲ ▼ – channel • ◀ ▶ – seek • EPG – channel guide • Back – exit",
+    osd_hint_live: "OK – info bar • ⏵‖ – pause/resume • ▲ ▼ – channel, or the bar buttons while it is open • ◀ ▶ – back / forward • EPG – channel guide • MENU – options • Back – exit",
+    osd_hint_archive: "OK – info bar • ⏵‖ – pause/resume • ▲ ▼ – channel, or the bar buttons while it is open • ◀ ▶ – seek • EPG – channel guide • Back – exit",
     osd_now: "Now:",
     osd_next_label: "Next:",
     osd_paused: "PAUSED",
@@ -517,7 +546,7 @@
     epg_none: "No EPG data for this channel.",
     archive_day_today: "Today", archive_day_yesterday: "Yesterday", archive_day_before: "2 days ago",
     archive_limited: "showing {shown} of {total}",
-    guide_limited: "showing {shown} of {total} channels (narrow the category)",
+    guide_count: "channels: {count}",
     osd_buffering: "Loading stream…",
     seek_back: "Back {s} s",
     seek_forward: "Forward +{s} s",
@@ -535,7 +564,7 @@
     update_asset: "Package: {name} ({size})",
     update_manual: "webOS does not install packages on its own — download the .{ext} on a computer and push it with developer mode (ares-install). Address: {url}",
     update_downloading: "Downloading the package… {pct}%",
-    update_permission: "Allow OpenIPTV to install apps from unknown sources, then press “Download & install” again.",
+    update_permission: "Allow TeleIPTV to install apps from unknown sources, then press “Download & install” again.",
     update_installer: "Package downloaded — confirm the update in the installer on screen.",
     update_err: "Update failed: {msg}",
     update_err_data: "GitHub returned no release information.",
@@ -546,25 +575,25 @@
 
     /* ---------- 1.21.0 ---------- */
     exit_title: "Quit the app?",
-    exit_hint: "Close OpenIPTV or stay on the channel list.",
+    exit_hint: "Close TeleIPTV or stay on the channel list.",
     exit_confirm: "⏻ Quit the app",
     exit_cancel: "✕ Stay",
     exit_manual: "This platform does not let the app close its own window — use the exit button on the remote.",
 
     /* ---------- 1.21.0 — remote manual in the settings (“REMOTE IN THE PLAYER”) ---------- */
     player_keys: "REMOTE IN THE PLAYER",
-    player_keys_hint: "This is how the remote works while a channel or a recording plays. The “◀ ▶ seek” option affects the arrow keys only — ⏪ ⏩ always seek. On a touch screen the same actions sit on the bar at the bottom of the picture.",
-    key_ok_short: "The bar with the channel name, current programme and progress: show or hide.",
+    player_keys_hint: "This is how the remote works while a channel or a recording plays. The “◀ ▶ seek” option affects the arrow keys only — ⏪ ⏩ always seek. On a touch screen the same actions sit on the bar at the bottom of the picture. While the bar is open, ▲ ▼ choose its buttons.",
+    key_ok_short: "The bar with the channel name, current programme and progress: show or hide. With the bar open, ▲ ▼ move onto its buttons (pause, EPG…).",
     key_ok_hold: "Hold for about a second: the channel options menu (favourites, archive, TV guide, restart, mute).",
     key_menu: "The same channel options menu, without holding OK.",
-    key_updown: "Next and previous channel on the visible list (like CH+ / CH−), wrapping around at both ends. One press is one change.",
-    key_leftright: "Seeking by the “archive seek step” setting: on a recording it jumps back and forward, on a live channel ◀ enters catch-up and ▶ resumes the paused picture.",
+    key_updown: "Next and previous channel on the visible list (like CH+ / CH−), wrapping around at both ends. One press is one change. While the bar is open, ▲ ▼ walk its buttons first — channels switch again once you leave the bar.",
+    key_leftright: "Seeking by the “archive seek step” setting: on a recording it jumps back and forward, on a live channel ◀ enters catch-up and ▶ resumes the paused picture. After a jump the message (“Back 10 s”) shows in the middle of the picture.",
     key_rewff: "The remote's own seek keys always work, even with the arrows switched off; ⏩ at the end of a programme goes back live.",
     key_playpause: "Pause and resume. After a longer pause a live channel returns to the moment you stopped it through catch-up; without archive the picture simply rejoins the stream.",
     key_stop: "Freeze the picture — the same as pause.",
     key_mute: "Mutes the player; the TV volume is left untouched.",
     key_back: "Back",
-    key_back_desc: "Closes the menu or the bar; from the player it goes back to the channel list, and from the list it asks “Quit the app?”.",
+    key_back_desc: "Closes the open bar or menu; with nothing open the player goes back to the channel list, and from the list it asks “Quit the app?”.",
 
     /* ---------- 1.21.4 — settings tabs and the channel guide in the player ---------- */
     tab_general: "General",
@@ -583,7 +612,7 @@
     help_nav_back: "Closes an overlay or goes one screen back. On the channel list it asks whether to quit the app.",
     help_epg: "TV GUIDE (EPG)",
     help_epg_grid: "The “EPG” button in the header opens a grid of all channels on a time axis. The programme on air carries a LIVE tag and the vertical line marks the current time.",
-    help_epg_pan: "Shifts the time axis by an hour — as far back or forward as you like.",
+    help_epg_pan: "Shifts the time axis by an hour — as far back or forward as you like. ▲ ▼ walk through the channels, and ▲ from the top row returns to the day buttons.",
     help_epg_days: "Jumps a day back or forward; the date and time fields next to it jump to an exact moment.",
     help_epg_pick: "A finished programme plays from the archive, the one on air goes live.",
     help_catchup: "ARCHIVE AND CATCH-UP",
@@ -1092,6 +1121,8 @@
       $(SCREENS[i]).classList.toggle("hidden", SCREENS[i] !== id);
     }
     notifyNativePlayer(id === "playerScreen");
+    /* zegar w rogu obrazu ma sens tylko na widocznym ekranie odtwarzacza */
+    syncCornerClock();
     /* zegar linii bieżącej godziny chodzi tylko na widocznym programie TV */
     if (id !== "guideScreen") stopGuideNowLine();
     window.setTimeout(function () {
@@ -1199,6 +1230,7 @@
     $("uiMode").value = settings.uiMode === "tv" || settings.uiMode === "touch" ? settings.uiMode : "auto";
     $("uiScale").value = normalizeUiScale(settings.uiScale);
     $("osdEnabled").checked = settings.osdEnabled !== false;
+    $("clockEnabled").checked = settings.clockEnabled === true;
     $("settingsError").textContent = "";
     resetUpdateStatus();
     /* „Wstecz” w ustawieniach wychodzi bez zapisu — przy pierwszym uruchomieniu
@@ -1510,16 +1542,30 @@
   }
 
   /* Paczka z wydania: plik z właściwym rozszerzeniem; gdy wydanie ma ich kilka,
-     wybieramy nazwę zaczynającą się od „OpenIPTV” */
+     wybieramy „TeleIPTV-…”; starsze wydania miały „OpenIPTV-…”, więc liczą się oba */
+  /* Która nazwa jest „nasza paczka”: 2 – obecna nazwa, 1 – nazwa z wydań przed
+     przemianowaniem (wersja 2.0.0), 0 – cokolwiek innego z właściwym
+     rozszerzeniem (tak zostaje, gdy wydanie ma tylko taki plik). */
+  function updatePackageRank(name) {
+    if (/^teleiptv/i.test(name)) return 2;
+    if (/^openiptv/i.test(name)) return 1;
+    return 0;
+  }
+
   function updateAssetFor(release, extension) {
     if (!release || !release.assets || !extension) return null;
     var pattern = new RegExp("\\." + extension + "$", "i");
     var found = null;
+    var rank = 0;
     for (var i = 0; i < release.assets.length; i++) {
       var asset = release.assets[i];
       var name = (asset && asset.name) || "";
       if (!pattern.test(name)) continue;
-      if (!found || /^openiptv/i.test(name)) found = asset;
+      var value = updatePackageRank(name);
+      if (!found || value > rank) {
+        found = asset;
+        rank = value;
+      }
     }
     return found;
   }
@@ -1788,7 +1834,7 @@
     allowed.then(function (result) {
       if (result && result.allowed === false) {
         /* system nie pozwala instalować z nieznanych źródeł — otwieramy ekran,
-           na którym włącza się tę zgodę dla OpenIPTV */
+           na którym włącza się tę zgodę dla TeleIPTV */
         askedForPermission = true;
         setUpdateStatus(t("update_permission"), "warn");
         if (!plugin.openInstallSettings) return null;
@@ -2269,9 +2315,43 @@
     });
   }
 
+  /* EPG ruszamy dopiero wtedy, gdy lista kanałów jest już narysowana, pilot ma
+     fokus, a przeglądarka nie ma pilniejszej roboty. Wcześniej pobieranie
+     i parsowanie XMLTV startowało natychmiast po wczytaniu listy i konkurowało
+     z pierwszym malowaniem ekranu — aplikacja zamarzała na starcie. */
+  var epgStartTimer = null;
+  var EPG_START_DELAY_MS = 1500;
+
+  function scheduleEpgStart(profile, epgUrl) {
+    cancelEpgStart();
+    var run = function () {
+      epgStartTimer = null;
+      if (!state.channels.length) return;
+      var current = activeProfile();
+      /* profil zdążył się zmienić albo zniknął — nie ładujemy już niczego */
+      if (!current || current.id !== profile.id) return;
+      loadEpgInBackground(current, epgUrl);
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      epgStartTimer = window.requestIdleCallback(run, { timeout: 4000 });
+      return;
+    }
+    epgStartTimer = window.setTimeout(run, EPG_START_DELAY_MS);
+  }
+
+  function cancelEpgStart() {
+    if (!epgStartTimer) return;
+    if (typeof window.cancelIdleCallback === "function") {
+      try { window.cancelIdleCallback(epgStartTimer); } catch (error) { /* to nie był idle */ }
+    }
+    window.clearTimeout(epgStartTimer);
+    epgStartTimer = null;
+  }
+
   function refreshEpg() {
     var profile = activeProfile();
     if (!profile || !state.channels.length) return;
+    cancelEpgStart();
     loadEpgInBackground(profile, state.epgUrl);
   }
 
@@ -2291,6 +2371,8 @@
     normalizeProfile(profile);
     showScreen("browserScreen");
     scheduleEpgRefresh();
+    /* nowy katalog unieważnia odroczony start EPG poprzedniego profilu */
+    cancelEpgStart();
 
     var switcher = $("profileSwitcher");
     suppressProfileSwitcher = true;
@@ -2337,9 +2419,12 @@
          Gdy użytkownik właśnie pisze zapytanie, nie przerywamy mu. */
       if (isTvMode() && document.activeElement !== $("searchInput")) focusChannelEntry();
 
-      /* 2) EPG w tle (o ile włączone przy starcie) */
+      /* 2) EPG w tle (o ile włączone przy starcie) — start jest odroczony do
+         chwili, gdy lista kanałów i fokus są już gotowe (patrz scheduleEpgStart),
+         żeby pobieranie i parsowanie nie zamroziło startu aplikacji */
       if (settings.epgReloadOnStart) {
-        loadEpgInBackground(profile, state.epgUrl);
+        setStatus(state.channels.length + " " + t("channels_count"));
+        scheduleEpgStart(profile, state.epgUrl);
       } else {
         state.programs = {};
         setStatus(state.channels.length + " " + t("channels_count"));
@@ -3708,6 +3793,10 @@
     state.seekAt = now;
     state.seekDirection = direction;
     refreshSeekNotice();
+    /* ten sam wpis pokazujemy na środku obrazu: pasek po chwili sam znika,
+       a przy przewijaniu pilotem informacja „Cofnięto o 10 s” ma zostać na
+       oczach, także gdy menu jest zamknięte (patrz showPlayerToast) */
+    showPlayerToast(seekNotice());
   }
 
   /* nowe okno obrazu (kanał, program, „na żywo”) nie jest przewijaniem — wpis
@@ -3716,6 +3805,7 @@
     state.seekAt = 0;
     state.seekDirection = 0;
     state.seekSize = 0;
+    hidePlayerToast();
   }
 
   /* tekst skoku dla paska; pusty, gdy od przewinięcia minęło już SEEK_GRACE */
@@ -3731,6 +3821,85 @@
     el.textContent = text;
     if (text) el.classList.remove("hidden");
     else el.classList.add("hidden");
+  }
+
+  /* -------------------  KOMUNIKAT NA ŚRODKU OBRAZU  -------------------
+     Przewinięcie widać na samym wideo („Cofnięto o 10 s”), a nie tylko w pasku
+     na dole: pasek chowa się sam po OSD_AUTOHIDE i przy oglądaniu zostawał sam
+     obraz, bez śladu tego, co się właśnie stało. Komunikat jest niezależny od
+     paska, więc widać go również przy zamkniętym menu odtwarzacza. */
+
+  var TOAST_MS = 2000;
+  var toastTimer = null;
+
+  function showPlayerToast(text, ms) {
+    var el = $("playerToast");
+    if (!el) return;
+    if (toastTimer) {
+      clearTimeout(toastTimer);
+      toastTimer = null;
+    }
+    if (!text) {
+      el.textContent = "";
+      el.classList.add("hidden");
+      return;
+    }
+    el.textContent = text;
+    el.classList.remove("hidden");
+    toastTimer = setTimeout(function () {
+      toastTimer = null;
+      el.classList.add("hidden");
+    }, ms > 0 ? ms : TOAST_MS);
+  }
+
+  function hidePlayerToast() {
+    showPlayerToast("");
+  }
+
+  /* ---------------------  ZEGAR W ROGU OBRAZU  ---------------------
+     Włączany w Ustawieniach („Zegar w rogu obrazu”): pokazuje godzinę HH:MM
+     w lewym górnym rogu i tylko wtedy, gdy naprawdę leci program — na liście
+     kanałów, w programie TV i w ustawieniach go nie ma. Budzik nastawiamy na
+     pełną minutę, więc przez resztę czasu nic nie chodzi. */
+
+  var clockTimer = null;
+
+  function cornerClockText(ts) {
+    var date = new Date(ts === undefined ? Date.now() : ts);
+    return pad2(date.getHours()) + ":" + pad2(date.getMinutes());
+  }
+
+  /* Zegar pokazuje się wyłącznie na widocznym ekranie odtwarzacza z kanałem —
+     inaczej byłby ozdobnikiem na liście kanałów. */
+  function cornerClockWanted() {
+    if (settings.clockEnabled !== true) return false;
+    var screen = $("playerScreen");
+    if (!screen || screen.classList.contains("hidden")) return false;
+    return !!state.watchChannel;
+  }
+
+  function renderCornerClock() {
+    var el = $("cornerClock");
+    if (!el) return;
+    if (!cornerClockWanted()) {
+      el.classList.add("hidden");
+      return;
+    }
+    el.textContent = cornerClockText();
+    el.classList.remove("hidden");
+  }
+
+  /* Pierwsze tyknięcie wypada równo z pełną minutą, a gdy zegar nie jest
+     potrzebny (brak oglądania), budzik w ogóle nie zostaje nastawiony. */
+  function syncCornerClock() {
+    if (clockTimer) {
+      clearTimeout(clockTimer);
+      clockTimer = null;
+    }
+    renderCornerClock();
+    if (!cornerClockWanted()) return;
+    var now = new Date();
+    clockTimer = setTimeout(syncCornerClock, (60 - now.getSeconds()) * 1000 - now.getMilliseconds() + 120);
   }
 
   /* Czy odtwarzane okno archiwum kończy się na „teraz”? Tak jest w timeshicie
@@ -3797,9 +3966,13 @@
     showSeekOverlay();
   }
 
-  /* pasek z czasem na chwilę po skoku — jak przy przewijaniu nagrania */
+  /* pasek z czasem na chwilę po skoku — jak przy przewijaniu nagrania.
+     Pasek pokazany przy skoku jest tylko informacją (chowa się po 1,8 s), więc
+     ▲ ▼ dalej przełączają kanały — inaczej po skoku nie dałoby się zmienić
+     kanału, dopóki pasek zdążyłby zniknąć sam. */
   function showSeekOverlay() {
     $("playerOverlay").classList.remove("hidden");
+    state.osdMenu = false;
     clearTimeout(overlayTimer);
     overlayTimer = setTimeout(function () {
       $("playerOverlay").classList.add("hidden");
@@ -3918,7 +4091,7 @@
     for (var i = 0; i < all.length; i++) {
       if (all[i].offsetParent !== null && !all[i].disabled) candidates.push(all[i]);
     }
-    if (!candidates.length) return;
+    if (!candidates.length) return false;
 
     /* Punkt odniesienia: sfokusowany element. Gdy fokus zniknął, bo przycisk
        został wyłączony albo ukryty (tak działo się z „Pobierz i zainstaluj”
@@ -3936,7 +4109,7 @@
     if (!box || (!box.width && !box.height)) {
       candidates[0].focus();
       keepInView(candidates[0]);
-      return;
+      return true;
     }
 
     var cx = box.left + box.width / 2;
@@ -3974,7 +4147,11 @@
     if (best) {
       best.focus();
       keepInView(best);
+      return true;
     }
+    /* brak kandydata w tym kierunku — wywołujący wie, że fokus stoi w miejscu
+       (w odtwarzaczu: ▲ ▼ z paska wychodzą wtedy z menu na obraz) */
+    return false;
   }
 
   /* ---------------------  STRZAŁKI W POLU SZUKANIA  ---------------------
@@ -4047,7 +4224,8 @@
 
   /* Ruch pilotem po siatce EPG: ▲ / ▼ przeskakują do najbliższego programu w
      sąsiednim wierszu (kanale) — fokus trzyma się kolumny czasu. ◀ / ▶ nadal
-     przewijają całą oś, a OK uruchamia program albo catch-up. */
+     przewijają całą oś, a OK uruchamia program albo catch-up. Z górnego wiersza
+     ▲ wraca do przycisków dnia, żeby pilotem dało się dojść do „Dziś”. */
   function focusGuide(keyCode) {
     var grid = $("guideGrid");
     if (!grid) return;
@@ -4056,11 +4234,14 @@
     var inGrid = !!(current && current.classList && current.classList.contains("guide-program"));
 
     if (!inGrid) {
-      /* wejście w siatkę z nagłówka: pierwszy dostępny program pierwszego kanału */
-      var first = grid.querySelector(".guide-program:not([disabled])");
-      if (first) {
-        first.focus();
-        first.scrollIntoView(false);
+      /* wejście w siatkę z nagłówka: tam, gdzie EPG już stoi (oglądany kanał
+         albo wiersz przy górnej krawędzi), zamiast skakać na początek listy */
+      var entry = guideEntryBlock();
+      if (entry) {
+        try { entry.focus(); } catch (error) { /* bez fokusu też da się kliknąć */ }
+        try { entry.scrollIntoView({ block: "nearest" }); }
+        catch (error2) { entry.scrollIntoView(false); }
+        guideEnsureAhead();
       }
       return;
     }
@@ -4090,6 +4271,20 @@
     if (best) {
       best.focus();
       best.scrollIntoView(false);
+      /* przy dolnej krawędzi widoku dokładamy kolejne wiersze — inaczej fokus
+         stanąłby na ostatnim kanale z pomyślanej porcji */
+      guideEnsureAhead();
+      return;
+    }
+    /* nad górnym wierszem nie ma już programu: ▲ wraca do nagłówka */
+    if (keyCode === 38) focusGuideHeader();
+  }
+
+  /* wyjście z siatki do nagłówka programu TV (▲ z górnego wiersza) */
+  function focusGuideHeader() {
+    var target = $("guideToday") || $("guideClose");
+    if (target && target.focus) {
+      try { target.focus(); } catch (error) { /* bez fokusu też da się kliknąć */ }
     }
   }
 
@@ -4115,11 +4310,15 @@
     guide.windowStart = now - (now % 3600000) - 3600000;
     guide.focusKey = opts.channel ? keyOf(opts.channel) : "";
     guide.returnTo = opts.returnTo || "browserScreen";
-    renderGuide();
+    guide.anchor = -1;
+    /* Najpierw pokazujemy ekran, a dopiero potem rysujemy siatkę: program TV ma
+       wypełnić ekran, więc liczba godzin bierze się z realnej szerokości siatki
+       — w ukrytym ekranie byłaby zerowa i zostałoby okno na pół ekranu. */
     showScreen("guideScreen");
+    renderGuide();
     focusGuideWatched();
-    /* linia bieżącej godziny rysuje się dopiero na widocznej siatce (wtedy da
-       się zmierzyć kolumnę z nazwami kanałów) i sama idzie dalej */
+    /* linia bieżącej godziny rysuje się na widocznej siatce (wtedy da się
+       zmierzyć kolumnę z nazwami kanałów) i sama idzie dalej */
     updateGuideNowLine();
     startGuideNowLine();
   }
@@ -4133,39 +4332,45 @@
     showScreen(target);
   }
 
+  /* Każda zmiana dnia albo godziny przerysowuje siatkę, ale wiersz z fokusem
+     zostaje na swoim miejscu — po przewinięciu godzin nadal widać ten sam
+     kanał, tylko w innym czasie. */
+  function guideRedraw() {
+    var rowIndex = guideFocusRowIndex();
+    var inGrid = rowIndex >= 0;
+    if (!inGrid) {
+      /* fokus jest poza siatką (np. na przyciskach dnia) — nie zabieramy go
+         z nagłówka, tylko zostawiamy widok na tym kanale, który był na ekranie;
+         inaczej „Dzień ›” wracałoby na początek listy */
+      var grid = $("guideGrid");
+      if (grid && grid.clientHeight && guide.rendered) {
+        var top = Math.max(0, grid.scrollTop - guideRowsOffset());
+        rowIndex = guide.winStart + Math.floor(top / guide.rowHeight);
+      }
+    }
+    /* widok startuje wiersz przed fokusem — wtedy wybrany kanał nie chowa się
+       pod przyklejoną osią czasu */
+    if (rowIndex > 0) guide.anchor = rowIndex - 1;
+    else if (rowIndex === 0) guide.anchor = 0;
+    renderGuide();
+    guide.anchor = -1;
+    if (inGrid) focusGuideRowBlock(rowIndex);
+  }
+
   /* przewijanie o cały dzień — zachowuje wybraną godzinę */
   function guideShiftDays(dir) {
     guide.windowStart += dir * 24 * 3600000;
-    renderGuide();
+    guideRedraw();
   }
 
   /* Przewijanie osi czasu o godzinę (◀ ▶) — działa w obie strony bez żadnego
      ograniczenia. Wcześniej strzałki tylko przenosiły fokus między programami
      i „zatykały się” na skraju widocznego zakresu, więc nie dało się cofnąć
-     dalej niż jedno okno (3 godziny). */
+     dalej niż jedno okno (3 godziny). Fokus zostaje na tym samym kanale. */
   function guidePan(hours) {
-    var active = document.activeElement;
-    var currentRow = active && active.closest ? active.closest(".guide-row") : null;
-    var rowIndex = -1;
-    if (currentRow && currentRow.parentNode) {
-      rowIndex = Array.prototype.indexOf.call(
-        currentRow.parentNode.querySelectorAll(".guide-row"),
-        currentRow
-      );
-    }
-
     guide.windowStart += hours * 3600000;
     guide.windowStart -= guide.windowStart % 3600000;
-    renderGuide();
-
-    /* fokus zostaje na tym samym kanale (wiersz), o ile ten istnieje */
-    if (rowIndex >= 0) {
-      var rows = $("guideGrid").querySelectorAll(".guide-row");
-      var targetRow = rows[Math.min(rowIndex, rows.length - 1)];
-      var block = targetRow && targetRow.querySelector(".guide-program:not([disabled])");
-      if (block) block.focus();
-      else $("guideGrid").scrollLeft = 0;
-    }
+    guideRedraw();
   }
 
   /* skok do dnia względem dziś (0 = dziś, -1 = wczoraj, -2 = przedwczoraj)
@@ -4175,13 +4380,13 @@
     var hour = new Date(guide.windowStart).getHours();
     var target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset, hour, 0, 0, 0);
     guide.windowStart = target.getTime();
-    renderGuide();
+    guideRedraw();
   }
 
   function guideGoToday() {
     var now = Date.now();
     guide.windowStart = now - (now % 3600000) - 3600000;
-    renderGuide();
+    guideRedraw();
   }
 
   function guideGoToDate(dateStr) {
@@ -4190,7 +4395,7 @@
     var d = new Date(guide.windowStart);
     d.setFullYear(+m[1], +m[2] - 1, +m[3]);
     guide.windowStart = d.getTime() - (d.getTime() % 3600000);
-    renderGuide();
+    guideRedraw();
   }
 
   function guideGoToTime(timeStr) {
@@ -4199,129 +4404,86 @@
     var d = new Date(guide.windowStart);
     d.setHours(+m[1], +m[2] || 0, 0, 0);
     guide.windowStart = d.getTime();
-    renderGuide();
+    guideRedraw();
   }
 
+  /* Rysuje siatkę programu TV: oś czasu, widoczne wiersze z zapasem i linię
+     bieżącej godziny. Szerokość i liczba godzin zależą od ekranu, więc najpierw
+     powstaje sama kolumna z nazwami kanałów — z niej liczy się resztę. */
   function renderGuide() {
-    var start = guide.windowStart;
-    var end = start + guide.hours * 3600000;
     var container = $("guideGrid");
-    container.textContent = "";
+    if (!container) return;
 
-    /* oś czasu */
+    guide.items = guideChannels();
+
+    container.textContent = "";
     var axis = document.createElement("div");
     axis.className = "guide-axis";
     var corner = document.createElement("div");
     corner.className = "guide-corner";
     axis.appendChild(corner);
+    container.appendChild(axis);
+
+    /* Program TV ma wypełnić szerokość ekranu: kolumna z godzinami dzieli to,
+       co zostało po nazwach kanałów (3–6 godzin, patrz guideFitHours). */
+    var columnWidth = corner.offsetWidth || GUIDE_CHANNEL_WIDTH;
+    var inner = guideInnerWidth();
+    guide.hours = guideFitHours(inner, columnWidth);
+    guide.hourWidth = Math.max(GUIDE_HOUR_MIN_W, Math.floor((inner - columnWidth) / guide.hours));
+    container.style.setProperty("--guide-hour", guide.hourWidth + "px");
+
     for (var h = 0; h < guide.hours; h++) {
       var cell = document.createElement("div");
       cell.className = "guide-hour";
       cell.style.width = guide.hourWidth + "px";
-      var hourDate = new Date(start + h * 3600000);
+      var hourDate = new Date(guide.windowStart + h * 3600000);
       cell.textContent = pad2(hourDate.getHours()) + ":00";
       axis.appendChild(cell);
     }
-    container.appendChild(axis);
 
-    var now = Date.now();
-    var rows = guideChannels();
-    var hiddenRows = Math.max(0, rows.length - GUIDE_ROWS);
-    /* EPG otwarte z odtwarzacza: oglądany kanał musi być w siatce, nawet gdy
-       leży daleko na liście — inaczej trzeba by go szukać pilotem */
-    var first = 0;
-    if (guide.focusKey) {
-      for (var f = 0; f < rows.length; f++) {
-        if (keyOf(rows[f]) === guide.focusKey) {
-          if (f >= GUIDE_ROWS) first = f - 3;
-          break;
+    /* Od którego kanału zaczynamy: po przewinięciu dnia albo godzin zostajemy
+       na tym samym wierszu, a EPG otwarte z odtwarzacza — na oglądanym kanale
+       (nawet gdy leży daleko na liście, bo teraz wszystkie kanały są dostępne). */
+    var first = guide.anchor;
+    if (first < 0) {
+      first = 0;
+      if (guide.focusKey) {
+        for (var f = 0; f < guide.items.length; f++) {
+          if (keyOf(guide.items[f]) === guide.focusKey) { first = Math.max(0, f - 3); break; }
         }
       }
     }
+    first = Math.max(0, Math.min(first, Math.max(0, guide.items.length - 1)));
+
     /* Wiersze siedzą we wspólnym pudełku: tylko wtedy da się poprowadzić przez
        wszystkie kanały jedną pionową linię bieżącej godziny. */
     var rowsWrap = document.createElement("div");
     rowsWrap.className = "guide-rows";
-
-    rows.slice(first, first + GUIDE_ROWS).forEach(function (channel) {
-      var row = document.createElement("div");
-      row.className = "guide-row";
-      row.setAttribute("data-key", keyOf(channel));
-      if (guide.focusKey && keyOf(channel) === guide.focusKey) row.classList.add("watching");
-
-      var name = document.createElement("div");
-      name.className = "guide-channel";
-      var nm = document.createElement("span");
-      nm.textContent = channel.name;
-      name.appendChild(nm);
-      row.appendChild(name);
-
-      var lane = document.createElement("div");
-      lane.className = "guide-lane";
-      lane.style.width = (guide.hours * guide.hourWidth) + "px";
-
-      var canCatchup = hasArchive(channel);
-      programsFor(channel).filter(function (p) {
-        return p.end > start && p.start < end;
-      }).forEach(function (p) {
-        var block = document.createElement("button");
-        block.className = "guide-program";
-        var s = Math.max(p.start, start);
-        var e = Math.min(p.end, end);
-        block.style.left = ((s - start) / 3600000 * guide.hourWidth) + "px";
-        block.style.width = Math.max(44, ((e - s) / 3600000 * guide.hourWidth) - 6) + "px";
-
-        var isPast = p.end <= now;
-        var isNow = p.start <= now && now < p.end;
-        block.classList.toggle("past", isPast);
-        block.classList.toggle("now", isNow);
-        if (p.start > now || (isPast && !canCatchup)) block.disabled = true;
-
-        var tm = document.createElement("time");
-        tm.textContent = pad2(new Date(p.start).getHours()) + ":" + pad2(new Date(p.start).getMinutes());
-        block.appendChild(tm);
-        var titleRow = document.createElement("div");
-        titleRow.className = "guide-title-row";
-        var lab = document.createElement("span");
-        lab.textContent = p.title;
-        titleRow.appendChild(lab);
-        /* program, który leci teraz, dostaje podpis „LIVE” */
-        if (isNow) {
-          var live = document.createElement("em");
-          live.className = "guide-live";
-          live.textContent = t("live");
-          titleRow.appendChild(live);
-        }
-        block.appendChild(titleRow);
-
-        block.onclick = function () {
-          if (isNow) playChannel(channel, null, "guideScreen");
-          else if (isPast && canCatchup) playChannel(channel, p, "guideScreen");
-        };
-        lane.appendChild(block);
-      });
-      row.appendChild(lane);
-      rowsWrap.appendChild(row);
-    });
+    rowsWrap.id = "guideRows";
     container.appendChild(rowsWrap);
+    rowsWrap.appendChild(buildGuideNowLine());
 
-    /* linia bieżącej godziny — nad wierszami, więc przechodzi przez całą
-       wysokość siatki, a podpis u góry pokazuje aktualną godzinę */
-    var line = document.createElement("div");
-    line.className = "guide-nowline";
-    line.id = "guideNowLine";
-    var chip = document.createElement("b");
-    chip.className = "guide-nowline-label";
-    line.appendChild(chip);
-    rowsWrap.appendChild(line);
+    /* Rysujemy tylko widok z zapasem (GUIDE_OVERSCAN wierszy nad i pod ekranem),
+       a brakujące kanały udają odstępy — w DOM jest zawsze kilkadziesiąt wierszy,
+       więc siatka pokazuje wszystkie kanały i nie zacina się przy 5000. */
+    guide.rowHeight = guideRowHeight();
+    guide.winStart = Math.max(0, first - GUIDE_OVERSCAN);
+    guide.rendered = 0;
+    guideFill(guideRowsOnScreen() + GUIDE_OVERSCAN + Math.min(GUIDE_OVERSCAN, first));
+    /* wysokość wiersza mierzymy na gotowym wierszu — odstępy muszą trafić w piksel */
+    guide.rowHeight = guideRowHeight();
+    guideUpdateSpacers();
     updateGuideNowLine();
 
-    var from = new Date(start);
-    var to = new Date(end);
+    ensureGuideScrollBound();
+    guideScrollToRow(first);
+
+    var from = new Date(guide.windowStart);
+    var to = new Date(guide.windowStart + guide.hours * 3600000);
     $("guideRange").textContent =
       pad2(from.getDate()) + "." + pad2(from.getMonth() + 1) + "  " +
       pad2(from.getHours()) + ":00 – " + pad2(to.getHours()) + ":00" +
-      (hiddenRows ? " • " + t("guide_limited", { shown: GUIDE_ROWS, total: rows.length }) : "");
+      " • " + t("guide_count", { count: guide.items.length });
 
     var dateEl = $("guideDate");
     var ds = from.getFullYear() + "-" + pad2(from.getMonth() + 1) + "-" + pad2(from.getDate());
@@ -4329,6 +4491,299 @@
     var timeEl = $("guideTime");
     var ts = pad2(from.getHours()) + ":" + pad2(from.getMinutes());
     if (timeEl && timeEl.value !== ts) timeEl.value = ts;
+  }
+
+  /* -------------------- siatka programu TV rysowana „okienkowo” -------------
+     W DOM trzymamy tylko widok z zapasem: GUIDE_OVERSCAN wierszy nad i pod
+     ekranem. Resztę kanałów udają odstępy o wysokości wiersza, więc siatka
+     wygląda i przewija się jak cała (wszystkie kanały!), a czas rysowania
+     i pamięć są stałe — dlatego EPG nie zacina telewizora. */
+
+  /* szerokość wnętrza siatki bez marginesów — tyle miejsca mają nazwy kanałów
+     i oś czasu; gdy siatka jest jeszcze niewidoczna, bierzemy szerokość ekranu */
+  function guideInnerWidth() {
+    var grid = $("guideGrid");
+    var width = grid && grid.clientWidth ? grid.clientWidth : 0;
+    if (!width) return Math.max(640, (document.documentElement.clientWidth || 1280) - 48);
+    if (window.getComputedStyle) {
+      var style = window.getComputedStyle(grid);
+      width -= (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
+    }
+    return width;
+  }
+
+  /* Ile godzin zmieścić na ekranie: program TV ma wypełnić szerokość, a nie
+     kończyć się w połowie (na 1080p wychodzi 4–5 godzin, na mniejszym 3). */
+  function guideFitHours(innerWidth, channelWidth) {
+    var room = Math.max(GUIDE_HOUR_MIN_W, innerWidth - channelWidth);
+    var hours = Math.floor(room / GUIDE_HOUR_MIN_W);
+    if (hours < GUIDE_MIN_HOURS) hours = GUIDE_MIN_HOURS;
+    if (hours > GUIDE_MAX_HOURS) hours = GUIDE_MAX_HOURS;
+    return hours;
+  }
+
+  /* wysokość wiersza z CSS — odstępy muszą trafić w piksel */
+  function guideRowHeight() {
+    var row = $("guideRows") ? $("guideRows").querySelector(".guide-row") : null;
+    var height = row && row.offsetHeight ? row.offsetHeight : 0;
+    return height > 20 ? height : 96;
+  }
+
+  /* ile wierszy mieści się na ekranie (z zapasem, gdy siatka jest ukryta) */
+  function guideRowsOnScreen() {
+    var grid = $("guideGrid");
+    var height = grid && grid.clientHeight ? grid.clientHeight : 0;
+    if (!height) return 8;
+    return Math.ceil(height / guide.rowHeight) + 1;
+  }
+
+  /* Od którego miejsca w siatce zaczyna się lista wierszy: oś czasu jest
+     przyklejona u góry, więc wiersze widoczne pod nią trzeba liczyć z prostokątów
+     elementów (siatka nie musi być pozycjonowana). */
+  function guideRowsOffset() {
+    var grid = $("guideGrid");
+    var wrap = $("guideRows");
+    if (!grid || !wrap) return 0;
+    return wrap.getBoundingClientRect().top - grid.getBoundingClientRect().top + grid.scrollTop;
+  }
+
+  /* odstępy zamiast wierszy, których nie ma w DOM */
+  function guideUpdateSpacers() {
+    var wrap = $("guideRows");
+    if (!wrap) return;
+    var total = guide.items.length;
+    wrap.style.paddingTop = (guide.winStart * guide.rowHeight) + "px";
+    wrap.style.paddingBottom =
+      (Math.max(0, total - guide.winStart - guide.rendered) * guide.rowHeight) + "px";
+  }
+
+  /* dokłada wiersze na końcu widoku (jedna porcja = jeden kanał na wiersz) */
+  function guideFill(count) {
+    var wrap = $("guideRows");
+    if (!wrap) return;
+    var now = Date.now();
+    for (var i = 0; i < count && guide.winStart + guide.rendered < guide.items.length; i++) {
+      wrap.appendChild(buildGuideRow(guide.items[guide.winStart + guide.rendered], now));
+      guide.rendered++;
+    }
+    guideUpdateSpacers();
+  }
+
+  /* usuwa wiersze, które zostały daleko nad widokiem — pamięć i płynność;
+     fokusu nie ruszamy, bo bez niego pilot zgubiłby się po przewinięciu */
+  function guidePruneTop(limit) {
+    var wrap = $("guideRows");
+    if (!wrap) return;
+    var keep = Math.max(0, limit);
+    while (guide.winStart < keep && guide.rendered > 0) {
+      var row = wrap.querySelector(".guide-row");
+      if (!row || row.contains(document.activeElement)) break;
+      wrap.removeChild(row);
+      guide.winStart++;
+      guide.rendered--;
+    }
+    guideUpdateSpacers();
+  }
+
+  /* który wiersz (kanał) ma fokus — liczony w całej liście kanałów, nie w widoku */
+  function guideFocusRowIndex() {
+    var active = document.activeElement;
+    var row = active && active.closest ? active.closest(".guide-row") : null;
+    if (!row || !row.parentNode) return -1;
+    var rows = row.parentNode.querySelectorAll(".guide-row");
+    var index = Array.prototype.indexOf.call(rows, row);
+    return index < 0 ? -1 : index + guide.winStart;
+  }
+
+  /* Siatka domyka się do tego, co widać: dokłada wiersze pod widokiem i usuwa
+     te, które zostały daleko nad nim. Fokus zostaje w DOM, więc ▲ ▼ nigdy nie
+     „zatyka się” na końcu pomyślanej porcji. */
+  function guideFollowScroll() {
+    var grid = $("guideGrid");
+    var wrap = $("guideRows");
+    if (!grid || !wrap || !guide.rendered || !grid.clientHeight) return;
+    var top = Math.max(0, grid.scrollTop - guideRowsOffset());
+    var first = Math.floor(top / guide.rowHeight);
+    var last = first + guideRowsOnScreen() + 1;
+    var focusIndex = guideFocusRowIndex();
+    guidePruneTop((focusIndex >= 0 ? Math.min(first, focusIndex) : first) - GUIDE_OVERSCAN);
+    var need = last + GUIDE_OVERSCAN - (guide.winStart + guide.rendered);
+    /* porcja na raz: przy skoku na koniec listy dorysowujemy tyle, ile widać */
+    if (need > 0) guideFill(Math.min(need, guideRowsOnScreen() + GUIDE_OVERSCAN * 3));
+  }
+
+  /* ▲ ▼ na krawędzi widoku: dorysowujemy kolejne wiersze, zanim w DOM zabraknie
+     programu — inaczej fokus stanąłby na ostatnim widocznym kanale */
+  function guideEnsureAhead() {
+    var index = guideFocusRowIndex();
+    if (index < 0) return;
+    var ahead = guide.winStart + guide.rendered - 1 - index;
+    if (ahead < GUIDE_AHEAD) guideFill(GUIDE_AHEAD - ahead + GUIDE_CHUNK);
+  }
+
+  /* ustawia widok na wskazanym wierszu (EPG otwarte z odtwarzacza) */
+  function guideScrollToRow(index) {
+    var grid = $("guideGrid");
+    var wrap = $("guideRows");
+    if (!grid || !wrap || index <= 0) return;
+    grid.scrollTop = Math.max(0, guideRowsOffset() + index * guide.rowHeight);
+  }
+
+  /* Przewijanie siatki woła guideFollowScroll() — dopiero wtedy dokładamy
+     i usuwamy wiersze, więc samo otwarcie EPG nic nie kosztuje. */
+  function ensureGuideScrollBound() {
+    var grid = $("guideGrid");
+    if (!grid || grid.getAttribute("data-guide-scroll") === "1") return;
+    grid.setAttribute("data-guide-scroll", "1");
+    grid.addEventListener("scroll", function () {
+      if (guide.scrollLock) return;
+      guide.scrollLock = true;
+      window.setTimeout(function () {
+        guide.scrollLock = false;
+        guideFollowScroll();
+      }, 80);
+    });
+  }
+
+  /* linia bieżącej godziny — nad wierszami, więc przechodzi przez całą wysokość
+     siatki, a podpis u góry pokazuje aktualną godzinę */
+  function buildGuideNowLine() {
+    var line = document.createElement("div");
+    line.className = "guide-nowline";
+    line.id = "guideNowLine";
+    var chip = document.createElement("b");
+    chip.className = "guide-nowline-label";
+    line.appendChild(chip);
+    return line;
+  }
+
+  /* godzina w formacie HH:MM na osi czasu programu TV */
+  function guideClock(ms) {
+    var d = new Date(ms);
+    return pad2(d.getHours()) + ":" + pad2(d.getMinutes());
+  }
+
+  /* jeden kanał: nazwa i oś czasu z programami */
+  function buildGuideRow(channel, now) {
+    var start = guide.windowStart;
+    var end = start + guide.hours * 3600000;
+    var row = document.createElement("div");
+    row.className = "guide-row";
+    row.setAttribute("data-key", keyOf(channel));
+    if (guide.focusKey && keyOf(channel) === guide.focusKey) row.classList.add("watching");
+
+    var name = document.createElement("div");
+    name.className = "guide-channel";
+    var nm = document.createElement("span");
+    nm.textContent = channel.name;
+    name.appendChild(nm);
+    row.appendChild(name);
+
+    var lane = document.createElement("div");
+    lane.className = "guide-lane";
+    lane.style.width = (guide.hours * guide.hourWidth) + "px";
+
+    var canCatchup = hasArchive(channel);
+    programsFor(channel).filter(function (p) {
+      return p.end > start && p.start < end;
+    }).forEach(function (p) {
+      lane.appendChild(buildGuideProgram(channel, p, now, canCatchup));
+    });
+    row.appendChild(lane);
+    return row;
+  }
+
+  /* jeden program na osi: godzina, tytuł (do dwóch linii), podpis „LIVE”
+     i pasek postępu tego, co leci teraz */
+  function buildGuideProgram(channel, p, now, canCatchup) {
+    var start = guide.windowStart;
+    var end = start + guide.hours * 3600000;
+    var block = document.createElement("button");
+    block.className = "guide-program";
+    var s = Math.max(p.start, start);
+    var e = Math.min(p.end, end);
+    block.style.left = ((s - start) / 3600000 * guide.hourWidth) + "px";
+    block.style.width = Math.max(44, ((e - s) / 3600000 * guide.hourWidth) - 6) + "px";
+
+    var isPast = p.end <= now;
+    var isNow = p.start <= now && now < p.end;
+    block.classList.toggle("past", isPast);
+    block.classList.toggle("now", isNow);
+    if (p.start > now || (isPast && !canCatchup)) block.disabled = true;
+    /* na wąskim kafelku tytuł bywa ucięty — pełny pokazuje podpowiedź */
+    block.title = guideClock(p.start) + "–" + guideClock(p.end) + "  " + p.title;
+
+    var tm = document.createElement("time");
+    tm.textContent = guideClock(p.start);
+    block.appendChild(tm);
+    var titleRow = document.createElement("div");
+    titleRow.className = "guide-title-row";
+    var lab = document.createElement("span");
+    lab.textContent = p.title;
+    titleRow.appendChild(lab);
+    /* program, który leci teraz, dostaje podpis „LIVE” */
+    if (isNow) {
+      var live = document.createElement("em");
+      live.className = "guide-live";
+      live.textContent = t("live");
+      titleRow.appendChild(live);
+    }
+    block.appendChild(titleRow);
+
+    /* pasek postępu programu, który leci teraz — od razu widać, ile zostało */
+    if (isNow && p.end > p.start) {
+      var bar = document.createElement("i");
+      bar.className = "guide-progress";
+      bar.style.width = Math.max(2, Math.min(100, (now - p.start) / (p.end - p.start) * 100)) + "%";
+      block.appendChild(bar);
+    }
+
+    block.onclick = function () {
+      if (isNow) playChannel(channel, null, "guideScreen");
+      else if (isPast && canCatchup) playChannel(channel, p, "guideScreen");
+    };
+    return block;
+  }
+
+  /* Wskakując w siatkę z nagłówka, wchodzimy na to, co widać: najpierw oglądany
+     kanał (EPG otwarte z odtwarzacza), potem program przy górnej krawędzi. */
+  function guideEntryBlock() {
+    var grid = $("guideGrid");
+    if (!grid) return null;
+    if (guide.focusKey) {
+      var rows = grid.querySelectorAll(".guide-row");
+      for (var i = 0; i < rows.length; i++) {
+        if (rows[i].getAttribute("data-key") !== guide.focusKey) continue;
+        var watched = rows[i].querySelector(".guide-program.now:not([disabled])") ||
+          rows[i].querySelector(".guide-program:not([disabled])");
+        if (watched) return watched;
+      }
+    }
+    var blocks = grid.querySelectorAll(".guide-program:not([disabled])");
+    if (!blocks.length) return null;
+    var edge = grid.getBoundingClientRect().top + 8;
+    var best = null;
+    var bestTop = Infinity;
+    for (var b = 0; b < blocks.length; b++) {
+      var rect = blocks[b].getBoundingClientRect();
+      if (rect.bottom < edge) continue;
+      if (rect.top < bestTop) { bestTop = rect.top; best = blocks[b]; }
+    }
+    return best || blocks[0];
+  }
+
+  /* fokus na pierwszym dostępnym programie wskazanego wiersza — po przewinięciu
+     dnia albo godzin ten sam kanał zostaje pod palcem */
+  function focusGuideRowBlock(index) {
+    var wrap = $("guideRows");
+    var rows = wrap ? wrap.querySelectorAll(".guide-row") : [];
+    var local = index - guide.winStart;
+    if (local < 0 || local >= rows.length) return;
+    var block = rows[local].querySelector(".guide-program.now:not([disabled])") ||
+      rows[local].querySelector(".guide-program:not([disabled])");
+    if (!block) return;
+    try { block.focus(); } catch (error) { /* bez fokusu też da się kliknąć */ }
+    guideEnsureAhead();
   }
 
   /* Fokus (i przewinięcie siatki) na oglądanym kanale — EPG otwarte z paska
@@ -4404,10 +4859,14 @@
     return !!overlay && !overlay.classList.contains("hidden");
   }
 
-  function showOsd() {
+  /* options.menu = true, gdy pasek otwiera użytkownik (OK / dotknięcie): wtedy
+     ▲ ▼ chodzą po jego przyciskach. Pasek pokazany przy zmianie kanału, skoku
+     albo pauzie to tylko informacja — ▲ ▼ z obrazu dalej przełączają kanały. */
+  function showOsd(options) {
     if (settings.osdEnabled === false) return;
     var overlay = $("playerOverlay");
     if (!overlay) return;
+    state.osdMenu = !!(options && options.menu);
     overlay.classList.remove("hidden");
     updateOsd();
     scheduleOsdHide();
@@ -4424,6 +4883,7 @@
       /* fokus nie może zostać na ukrytym przycisku — inaczej pilot „gubi się” */
       suspendFocusInside(overlay);
     }
+    state.osdMenu = false;
     clearTimeout(state.osdTimer);
     state.osdTimer = null;
     if (state.osdTicker) {
@@ -4434,7 +4894,40 @@
 
   function toggleOsd() {
     if (osdVisible()) hideOsd();
-    else showOsd();
+    /* OK otwiera pasek jako menu — patrz ▲ ▼ w obsłudze klawiszy odtwarzacza */
+    else showOsd({ menu: true });
+  }
+
+  /* ------------------  ▲ ▼ W ODTWARZACZU: KANAŁ CZY MENU?  ------------------
+     Pasek otwarty klawiszem OK jest menu: pierwsze ▲ ▼ wchodzi w jego przyciski
+     („Pauza”, „EPG”…), a nie przełącza kanału. Bez tego ▼ po otwarciu paska
+     zmieniało kanał i do przycisków nie dało się dojść. Pasek pokazany przy
+     zmianie kanału jest tylko informacją, więc ▲ ▼ dalej przełączają kanały —
+     dlatego CH+ działa naciśnięcie po naciśnięciu, bez wchodzenia w menu. */
+
+  /* wejście z obrazu na pierwszy przycisk paska; false = nie ma na czym stanąć */
+  function enterOsdBar() {
+    var bar = $("playerActions");
+    var buttons = bar ? bar.querySelectorAll("button") : [];
+    if (!buttons.length) return false;
+    state.osdMenu = true;
+    try {
+      buttons[0].focus();
+    } catch (error) {
+      return false;
+    }
+    keepInView(buttons[0]);
+    scheduleOsdHide();
+    return true;
+  }
+
+  /* wyjście z paska z powrotem na obraz: bez fokusu na przycisku ▲ ▼ znowu
+     przełączają kanały, a pasek zgaśnie sam (albo zostanie jako informacja) */
+  function leaveOsdBar() {
+    var bar = $("playerActions");
+    suspendFocusInside(bar || document.body);
+    state.osdMenu = false;
+    scheduleOsdHide();
   }
 
   /* pasek znika sam — chyba że obraz jest zatrzymany albo użytkownik właśnie
@@ -4475,7 +4968,12 @@
       action();
       scheduleOsdHide();
     };
-    button.onfocus = scheduleOsdHide;
+    /* fokus na przycisku paska (mysz, dotyk) = pasek jest menu: ▲ ▼ chodzą
+       po przyciskach, tak samo jak po otwarciu paska klawiszem OK */
+    button.onfocus = function () {
+      state.osdMenu = true;
+      scheduleOsdHide();
+    };
     return button;
   }
 
@@ -4918,6 +5416,12 @@
       return true;
     }
     if (!$("playerScreen").classList.contains("hidden")) {
+      /* Wstecz najpierw zamyka pasek otwarty jako menu — tak samo jak nakładki
+         na innych ekranach; samo wyjście z kanału zostaje na drugie naciśnięcie */
+      if (state.osdMenu && osdVisible()) {
+        hideOsd();
+        return true;
+      }
       stopPlayback();
       return true;
     }
@@ -5124,12 +5628,52 @@
     if (inPlayer) {
       /* Fokus na przycisku paska (mysz, dotyk): strzałki chodzą po pasku.
          Z pilota fokus siedzi na obrazie, więc strzałki sterują transmisją —
-         dlatego kanału nie przełącza „przypadkowe” wejście w pasek. */
+         dlatego kanału nie przełącza „przypadkowe” wejście w pasek. Pasek
+         otwarty klawiszem OK jest jednak zaproszeniem do swoich przycisków —
+         patrz niżej. */
       var osdFocus = document.activeElement;
       var onOsdButton = !!(osdFocus && osdFocus.getAttribute && osdFocus.getAttribute("data-osd"));
+
+      /* Nakładka nad obrazem (menu opcji kanału, pytanie o wyjście) ma własne
+         przyciski: strzałki chodzą po niej, a OK wybiera podświetloną pozycję —
+         tak samo jak na innych ekranach. Bez tego w obrazie ▲ ▼ zmieniały
+         kanał, a OK otwierało pasek zamiast wybrać pozycję z menu. */
+      if ($("contextMenu") || $("exitDialog")) {
+        if (key >= 37 && key <= 40) {
+          event.preventDefault();
+          focusNearest(key);
+          return;
+        }
+        if (key === 13 || key === 23 || key === 66) {
+          event.preventDefault();
+          if (event.repeat) return;
+          var overlay = $("contextMenu") || $("exitDialog");
+          if (overlay && overlay.contains(osdFocus) && osdFocus.click) osdFocus.click();
+          return;
+        }
+      }
+
+      /* Pasek otwarty klawiszem OK (albo dotknięciem) jest menu: ▲ ▼ wchodzą
+         w jego przyciski — „Pauza”, „EPG”… — a nie przełączają kanału. Pasek
+         pokazany przy zmianie kanału to tylko informacja, więc ▲ ▼ z obrazu
+         dalej zmieniają kanały i CH+ działa naciśnięcie po naciśnięciu. */
+      if (!onOsdButton && state.osdMenu && osdVisible() && (key === 38 || key === 40)) {
+        event.preventDefault();
+        if (event.repeat) return;
+        enterOsdBar();
+        return;
+      }
+
       if (onOsdButton && key >= 37 && key <= 40) {
         event.preventDefault();
-        focusNearest(key);
+        /* ▲ ▼ z paska wychodzą z menu z powrotem na obraz (i znowu zmieniają
+           kanały) — z otwartego menu musi być droga do oglądania bez
+           zatrzymywania kanału; ◀ ▶ chodzą po samych przyciskach paska */
+        if (key === 38 || key === 40) {
+          if (!focusNearest(key)) leaveOsdBar();
+        } else {
+          focusNearest(key);
+        }
         scheduleOsdHide();
         return;
       }
@@ -5318,6 +5862,20 @@
     if (seekDirection) seekBy(seekDirection);
   });
 
+  /* Zmiana rozmiaru okna albo obrót ekranu: program TV liczy liczbę godzin
+     i szerokość kolumny z realnej szerokości siatki, więc po zmianie trzeba go
+     przerysować. Przeglądarka wysyła zdarzenia seriami — dlatego czekamy chwilę
+     (guide.resizeTimer), a widok zostaje na tym samym kanale i godzinie. */
+  window.addEventListener("resize", function () {
+    if ($("guideScreen").classList.contains("hidden")) return;
+    window.clearTimeout(guide.resizeTimer);
+    guide.resizeTimer = window.setTimeout(function () {
+      guide.resizeTimer = null;
+      if ($("guideScreen").classList.contains("hidden")) return;
+      guideRedraw();
+    }, 220);
+  });
+
   /* Most dla natywnej obsługi klawiszy multimedialnych (Android TV / Fire TV).
      MainActivity oddaje je tutaj, gdy na ekranie jest odtwarzacz — inaczej
      WebView zjada część z nich dla własnej sesji multimediów i strona nie wie
@@ -5396,6 +5954,7 @@
     settings.uiMode = $("uiMode").value === "tv" || $("uiMode").value === "touch" ? $("uiMode").value : "auto";
     settings.uiScale = normalizeUiScale($("uiScale").value);
     settings.osdEnabled = $("osdEnabled").checked;
+    settings.clockEnabled = $("clockEnabled").checked;
 
     /* Wielkie teksty (playlista/EPG wybrane z pliku) trzymamy w osobnym kluczu,
        a w głównym zapisujemy tylko lekkie ustawienia — w przeciwnym razie zapis
@@ -5469,6 +6028,13 @@
       }
       window.location.reload();
     }, 500);
+  };
+
+  /* Zegar w rogu obrazu: przełącznik działa od razu, bez zapisywania ustawień
+     (zegar i tak pokazuje się tylko przy włączonym odtwarzaniu) */
+  $("clockEnabled").onchange = function () {
+    settings.clockEnabled = this.checked;
+    syncCornerClock();
   };
 
   $("osdEnabled").onchange = function () {
@@ -5631,6 +6197,13 @@
     saveSettingsFull();
   })();
 
+  /* przy chowaniu aplikacji dopisujemy ustawienia czekające jeszcze w kolejce,
+     a po powrocie do aplikacji zegar w rogu od razu pokazuje właściwą godzinę
+     (telefon, Fire TV) zamiast czekać na pełną minutę */
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) syncCornerClock();
+  });
+
   /* przy chowaniu aplikacji dopisujemy ustawienia czekające jeszcze w kolejce */
   window.addEventListener("pagehide", function () {
     if (settingsWriteTimer) flushSettings();
@@ -5644,7 +6217,7 @@
   var versionEl = $("appVersion");
   if (versionEl) versionEl.textContent = "v" + APP_VERSION;
   var settingsVersionEl = $("settingsVersion");
-  if (settingsVersionEl) settingsVersionEl.textContent = "OpenIPTV v" + APP_VERSION;
+  if (settingsVersionEl) settingsVersionEl.textContent = "TeleIPTV v" + APP_VERSION;
 
   if (settings.profiles.length) {
     loadCatalog();

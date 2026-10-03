@@ -51,9 +51,28 @@ function check(name, cond, extra) {
 
 function harness(o) {
   o = o || {};
-  const calls = { play: [], goLive: 0, osd: 0, error: [], osdHide: 0 };
+  const calls = { play: [], goLive: 0, osd: 0, error: [], osdHide: 0, timeouts: [] };
   const overlay = { classList: { remove: function () {}, add: function () {} } };
   const video = { duration: o.duration, currentTime: o.currentTime || 0 };
+  /* Atrapy elementów interfejsu (wpis na pasku, komunikat na środku obrazu):
+     jedna atrapa na id, żeby dalo sie sprawdzic, co aplikacja na nim pokazuje. */
+  const els = {};
+  function stub(id) {
+    if (!els[id]) {
+      const classes = {};
+      els[id] = {
+        id: id,
+        textContent: "",
+        style: {},
+        classList: {
+          add: function (c) { classes[c] = true; },
+          remove: function (c) { delete classes[c]; },
+          contains: function (c) { return !!classes[c]; }
+        }
+      };
+    }
+    return els[id];
+  }
   const sandbox = {
     state: {
       watchChannel: o.noChannel ? null : CH,
@@ -62,12 +81,14 @@ function harness(o) {
       /* jak w aplikacji: wpis o ostatnim skoku (markSeek / clearSeekMark) */
       seekAt: 0,
       seekDirection: 0,
-      seekSize: 0
+      seekSize: 0,
+      /* pasek otwarty klawiszem OK (menu) — skok musi go zamienić w informację */
+      osdMenu: !!o.osdMenu
     },
     settings: { seekSeconds: o.seekSeconds === undefined ? 10 : o.seekSeconds },
     $: function (id) {
       if (id === "video") return video;
-      return { style: {}, textContent: "", classList: { remove: function () {}, add: function () {} } };
+      return stub(id);
     },
     playChannel: function (channel, program, screen) { calls.play.push({ channel: channel, program: program, screen: screen }); },
     goLive: function () { calls.goLive++; },
@@ -79,13 +100,13 @@ function harness(o) {
     t: function (k) { return k; },
     formatTime: function (s) { return "t" + s; },
     overlayTimer: null,
-    setTimeout: function () { return 0; },
+    setTimeout: function (fn, ms) { calls.timeouts.push({ fn: fn, ms: ms }); return calls.timeouts.length; },
     clearTimeout: function () {},
     Date: { now: function () { return NOW; } }
   };
   vm.createContext(sandbox);
   vm.runInContext(code, sandbox);
-  return { api: sandbox, calls: calls, video: video };
+  return { api: sandbox, calls: calls, video: video, els: els };
 }
 
 /* Otoczenie dla bloku sterowania obrazem: obraz (pauza, wyciszenie) + decyzje
@@ -448,9 +469,27 @@ check("skok do przodu: pasek wie o kroku 10 s w przod",
   h.api.seekNotice() === "seek_forward",
   JSON.stringify({ t: h.video.currentTime, d: h.api.state.seekDirection, s: h.api.state.seekSize, note: h.api.seekNotice() }));
 
+/* ten sam wpis widac na srodku obrazu, a nie tylko w pasku, ktory po OSD_AUTOHIDE
+   sam znika — inaczej przy przewijaniu zostawal sam obraz bez informacji */
+check("skok widac na srodku obrazu (ten sam wpis co na pasku)",
+  h.els.playerToast.textContent === "seek_forward" &&
+  h.els.playerToast.textContent === h.els.playerSeek.textContent &&
+  !h.els.playerToast.classList.contains("hidden"),
+  JSON.stringify({ toast: h.els.playerToast.textContent, bar: h.els.playerSeek.textContent }));
+check("komunikat na obrazie gasnie sam po chwili (nie czeka na pasek)",
+  h.calls.timeouts.some(function (t) { return t.ms === 2000; }),
+  JSON.stringify(h.calls.timeouts));
+
 h.api.state.seekAt = NOW - 7000;
 check("kilka sekund po skoku wpis znika (to juz zwykle buforowanie)",
   h.api.seekNotice() === "", h.api.seekNotice());
+
+/* pasek pokazany przy skoku jest tylko informacja (chowa sie sam po 1,8 s),
+   wiec flaga menu musi wtedy zgasnac — inaczej ▲ ▼ nie zmienilyby kanalu */
+h = harness({ isArchive: true, duration: 600, currentTime: 300, osdMenu: true, program: { start: NOW - 600000, end: NOW, title: "P", timeshift: true } });
+h.api.seekBy(-1);
+check("skok gasi flage menu (▲ ▼ znowu przelaczaja kanaly)",
+  h.api.state.osdMenu === false, String(h.api.state.osdMenu));
 
 h = harness({ isArchive: true, duration: 600, currentTime: 300, program: { start: NOW - 600000, end: NOW, title: "P", timeshift: true } });
 h.api.seekBy(-1);
@@ -522,6 +561,17 @@ p = playHarness({});
 p.api.playChannel(CH, null, "playerScreen");
 check("wczytanie nowego obrazu kasuje wpis o przewinieciu",
   p.calls.seekCleared === 1, "seekCleared=" + p.calls.seekCleared);
+
+/* ...a razem z wpisem gasnie komunikat na srodku obrazu — nie moze zostac na
+   nowym kanale, ktorego nie dotyczyl */
+h = harness({ isArchive: true, duration: 600, currentTime: 300, program: { start: NOW - 600000, end: NOW, title: "P", timeshift: true } });
+h.api.seekBy(-1);
+const toastBefore = h.els.playerToast.textContent;
+h.api.clearSeekMark();
+check("nowy obraz gasi komunikat o skoku na srodku obrazu",
+  toastBefore === "seek_back" && h.els.playerToast.textContent === "" &&
+  h.els.playerToast.classList.contains("hidden"),
+  JSON.stringify({ before: toastBefore, after: h.els.playerToast.textContent }));
 
 console.log("");
 if (fails) { console.log("BLEDY: " + fails); process.exit(1); }

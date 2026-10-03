@@ -1,4 +1,4 @@
-# OpenIPTV - webOS build.
+# TeleIPTV - webOS build.
 # Stages www/ (plus the optional native fetch service) and packs it into an .ipk.
 #
 # Usage:
@@ -49,7 +49,7 @@ if (-not $ipk) { throw "ares-package did not produce an .ipk in $ipkOut" }
 # czysta aplikacja web). Zmieniamy nazwe na czytelna i spojna z paczka Android.
 # Urzadzenie czyta appinfo.json z wnetrza paczki, wiec nazwa pliku nie ma znaczenia.
 $ver = (Get-Content (Join-Path $root "package.json") -Raw | ConvertFrom-Json).version
-$friendly = Join-Path $ipkOut "OpenIPTV-$ver.ipk"
+$friendly = Join-Path $ipkOut "TeleIPTV-$ver.ipk"
 if ($ipk.FullName -ne $friendly) {
     Move-Item -Force $ipk.FullName $friendly
     $ipk = Get-Item $friendly

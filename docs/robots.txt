@@ -1,0 +1,8 @@
+# TeleIPTV — strona projektu (GitHub Pages).
+# Adres w "Sitemap" zmień razem z canonical w index.html, gdy repozytorium
+# dostanie nową nazwę.
+
+User-agent: *
+Allow: /
+
+Sitemap: https://keczup21.github.io/openiptv/sitemap.xml

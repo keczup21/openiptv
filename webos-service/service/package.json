@@ -1,7 +1,7 @@
 {
   "name": "pl.openiptv.player.service.fetch",
   "version": "1.0.0",
-  "description": "Native HTTP fetcher for OpenIPTV (bypasses CORS)",
+  "description": "Native HTTP fetcher for TeleIPTV (bypasses CORS)",
   "main": "main.js",
   "dependencies": {
     "webos-service": "*"

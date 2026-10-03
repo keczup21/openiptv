@@ -1,4 +1,4 @@
-# OpenIPTV - szybka publikacja: stage + commit + push do repozytorium na GitHubie.
+# TeleIPTV - szybka publikacja: stage + commit + push do repozytorium na GitHubie.
 #
 # Poświadczenia trzyma gh (raz zrobione `gh auth login` + `gh auth setup-git`),
 # więc push nie pyta o poświadczenia ani o zgodę.
@@ -119,8 +119,8 @@ try {
         Invoke-Exe npm run build:all
 
         $ver = (Get-Content (Join-Path $root "package.json") -Raw | ConvertFrom-Json).version
-        $apk = Join-Path $root "dist\android\OpenIPTV-$ver.apk"
-        $ipk = Join-Path $root "dist\ipk\OpenIPTV-$ver.ipk"
+        $apk = Join-Path $root "dist\android\TeleIPTV-$ver.apk"
+        $ipk = Join-Path $root "dist\ipk\TeleIPTV-$ver.ipk"
         foreach ($file in @($apk, $ipk)) {
             if (-not (Test-Path $file)) {
                 throw ("Brak paczki: $file. Do wydania ida wylacznie gotowe pliki " +
@@ -148,7 +148,7 @@ try {
         }
 
         Write-Host "Tworze wydanie $Tag ..."
-        $ghArgs = @("release", "create", $Tag, $apk, $ipk, "--title", "OpenIPTV $ver",
+        $ghArgs = @("release", "create", $Tag, $apk, $ipk, "--title", "TeleIPTV $ver",
                     "--notes-file", $Notes)
         Invoke-Exe gh @ghArgs
         Write-Host "Wydanie gotowe: $Tag ($(Invoke-Git remote get-url origin))"

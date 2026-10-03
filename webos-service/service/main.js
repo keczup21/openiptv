@@ -1,4 +1,4 @@
-/* OpenIPTV — webOS native service: fetches URLs bypassing CORS.
+/* TeleIPTV — webOS native service: fetches URLs bypassing CORS.
  * Runs under node.js on the TV; the web UI calls it over Luna Bus.
  */
 "use strict";

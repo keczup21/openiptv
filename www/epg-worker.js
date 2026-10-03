@@ -1,4 +1,4 @@
-/* OpenIPTV — parser XMLTV uruchamiany w Web Workerze (nie blokuje UI) */
+/* TeleIPTV — parser XMLTV uruchamiany w Web Workerze (nie blokuje UI) */
 "use strict";
 
 function parseXmltvDate(value) {

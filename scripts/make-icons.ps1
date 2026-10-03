@@ -1,5 +1,5 @@
 <#
-  make-icons.ps1 — generuje ikony i ekrany startowe OpenIPTV (PNG) z jednego wzoru.
+  make-icons.ps1 — generuje ikony i ekrany startowe TeleIPTV (PNG) z jednego wzoru.
 
   Wzór (przestrzeń projektowa 512x512, zgodna z www/icon.svg):
     * tło  : zaokrąglony kwadrat (albo koło) z gradientem #5b8cff -> #8b5cff
@@ -50,7 +50,7 @@ $script:CornerRadius = 118.0
 # ---------- ekran startowy (splash) ----------
 # Tło splashu to kolor aplikacji (#0a0c11 — ten sam co www/styles.css --bg
 # i appinfo.json bgColor). Domyślny splash z szablonu Capacitora był biały,
-# więc zamiast logo OpenIPTV pokazywał się obcy znak, a po starcie ekran
+# więc zamiast logo TeleIPTV pokazywał się obcy znak, a po starcie ekran
 # mrugał na biało. Logo zajmuje 26% krótszego boku ekranu.
 $script:SplashBg = '#0a0c11'
 $script:SplashLogo = 0.26
@@ -225,7 +225,7 @@ function Save-Splash {
   Write-Host ("  {0,-52} {1,4}px  {2}" -f $Path.Replace($Root + '\', ''), "${Width}x${Height}", 'splash')
 }
 
-Write-Host "OpenIPTV - generowanie ikon i ekranów startowych w $Root"
+Write-Host "TeleIPTV - generowanie ikon i ekranów startowych w $Root"
 Save-Logo -Path (Join-Path $Root 'www\icon.png')      -Size 80  -Mode tile
 Save-Logo -Path (Join-Path $Root 'www\largeicon.png') -Size 130 -Mode tile
 
