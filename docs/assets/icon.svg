@@ -1,12 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="TeleIPTV">
+  <title>TeleIPTV</title>
+  <desc>Biały telewizor z napisem IPTV na ekranie</desc>
   <defs>
-    <linearGradient id="oitv" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="tvbg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#5b8cff"/>
       <stop offset="1" stop-color="#8b5cff"/>
     </linearGradient>
   </defs>
-  <rect width="512" height="512" rx="118" fill="url(#oitv)"/>
-  <path d="M86 150 250 256 86 362Z" fill="#ffffff"/>
-  <path d="M272 176a80 80 0 0 1 0 160" fill="none" stroke="#ffffff" stroke-width="20" stroke-linecap="round" opacity="0.62"/>
-  <path d="M308 148a108 108 0 0 1 0 216" fill="none" stroke="#ffffff" stroke-width="20" stroke-linecap="round" opacity="0.36"/>
+  <rect width="512" height="512" rx="118" fill="url(#tvbg)"/>
+  <rect x="60" y="112" width="392" height="228" rx="26" fill="#ffffff"/>
+  <rect x="232" y="340" width="48" height="28" fill="#ffffff"/>
+  <rect x="176" y="368" width="160" height="22" rx="11" fill="#ffffff"/>
+  <rect x="78" y="130" width="356" height="192" rx="14" fill="#0a0c11"/>
+  <path d="M108 275.2L108 176.8L127.87 176.8L127.87 275.2ZM146.8 275.2L146.8 176.8L178.68 176.8C190.76 176.8 198.63 177.29 202.3 178.28C207.94 179.75 212.66 182.96 216.47 187.91C220.27 192.85 222.17 199.24 222.17 207.07C222.17 213.11 221.08 218.19 218.88 222.31C216.69 226.43 213.9 229.66 210.53 232.01C207.15 234.36 203.71 235.91 200.22 236.67C195.48 237.61 188.61 238.08 179.62 238.08L166.66 238.08L166.66 275.2ZM166.66 193.45L166.66 221.37L177.54 221.37C185.37 221.37 190.6 220.85 193.24 219.82C195.88 218.8 197.95 217.18 199.45 214.99C200.95 212.8 201.7 210.25 201.7 207.34C201.7 203.76 200.65 200.81 198.55 198.48C196.44 196.15 193.78 194.7 190.56 194.12C188.19 193.67 183.42 193.45 176.26 193.45ZM260.63 275.2L260.63 193.45L231.43 193.45L231.43 176.8L309.63 176.8L309.63 193.45L280.5 193.45L280.5 275.2ZM347.55 275.2L312.38 176.8L333.93 176.8L358.83 249.63L382.92 176.8L404 176.8L368.76 275.2Z" fill="#ffffff"/>
 </svg>

@@ -1,22 +1,16 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TeleIPTV: biały telewizor z napisem IPTV. Plik generuje
+     scripts/make-icons.ps1 - nie edytuj ręcznie. Ikona adaptacyjna
+     (mipmap-anydpi-v26) korzysta z @mipmap/ic_launcher_foreground,
+     więc ten wektor jest tylko zapasem na wypadek zmiany motywu. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M25.92,36.49 L53.01,54 L25.92,71.51 Z" />
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#9EFFFFFF"
-        android:strokeWidth="3.3"
-        android:strokeLineCap="round"
-        android:pathData="M56.64,40.79 a13.21,13.21 0 0 1 0,26.42" />
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#5CFFFFFF"
-        android:strokeWidth="3.3"
-        android:strokeLineCap="round"
-        android:pathData="M62.59,36.16 a17.84,17.84 0 0 1 0,35.68" />
+    <path android:fillColor="#FFFFFF" android:pathData="M25.92 37.81C25.92 35.75 27.59 34.09 29.64 34.09L78.36 34.09C80.41 34.09 82.08 35.75 82.08 37.81C82.08 37.81 82.08 37.81 82.08 37.81L82.08 63.03C82.08 65.08 80.41 66.75 78.36 66.75L29.64 66.75C27.59 66.75 25.92 65.08 25.92 63.03Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M50.56 66.75L57.44 66.75L57.44 70.76L50.56 70.76Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M42.54 72.34C42.54 71.47 43.24 70.76 44.11 70.76L63.89 70.76C64.76 70.76 65.46 71.47 65.46 72.34C65.46 72.34 65.46 72.34 65.46 72.34L65.46 72.34C65.46 73.21 64.76 73.91 63.89 73.91L44.11 73.91C43.24 73.91 42.54 73.21 42.54 72.34Z" />
+    <path android:fillColor="#0A0C11" android:pathData="M28.5 38.67C28.5 37.56 29.4 36.66 30.5 36.66L77.5 36.66C78.6 36.66 79.5 37.56 79.5 38.67C79.5 38.67 79.5 38.67 79.5 38.67L79.5 62.17C79.5 63.27 78.6 64.17 77.5 64.17L30.5 64.17C29.4 64.17 28.5 63.27 28.5 62.17Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M32.8 57.47L32.8 43.37L35.64 43.37L35.64 57.47ZM38.35 57.47L38.35 43.37L42.92 43.37C44.65 43.37 45.78 43.44 46.31 43.58C47.11 43.79 47.79 44.25 48.34 44.96C48.88 45.67 49.15 46.58 49.15 47.71C49.15 48.57 49 49.3 48.68 49.89C48.37 50.48 47.97 50.94 47.49 51.28C47 51.62 46.51 51.84 46.01 51.95C45.33 52.08 44.35 52.15 43.06 52.15L41.2 52.15L41.2 57.47ZM41.2 45.75L41.2 49.75L42.76 49.75C43.88 49.75 44.63 49.68 45.01 49.53C45.39 49.39 45.68 49.16 45.9 48.84C46.11 48.53 46.22 48.16 46.22 47.75C46.22 47.23 46.07 46.81 45.77 46.48C45.47 46.14 45.09 45.93 44.62 45.85C44.28 45.79 43.6 45.75 42.58 45.75ZM54.66 57.47L54.66 45.75L50.48 45.75L50.48 43.37L61.68 43.37L61.68 45.75L57.51 45.75L57.51 57.47ZM67.12 57.47L62.08 43.37L65.16 43.37L68.73 53.8L72.18 43.37L75.2 43.37L70.15 57.47Z" />
 </vector>

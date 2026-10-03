@@ -18,6 +18,19 @@ z numerem opisuje akapit wyżej). Opis wydania na GitHubie powstaje z tego wpisu
 `npm run notes` (`scripts/release-notes.js`) bierze z changeloga tylko sekcję
 wydawanej wersji.
 
+## [2.0.1] — 2026-10-03
+
+### Zmieniono
+- **Nowe logo aplikacji.** Zamiast trójkąta „play” z falami jest biały telewizor
+  z napisem **IPTV** na ekranie. Wszystkie ikony powstają z jednego wzoru —
+  ikona w launcherze (zwykła, okrągła i adaptacyjna na Androidzie 8+), ikona
+  w pasku aplikacji webOS i ekran startowy Androida — więc znak wygląda wszędzie
+  tak samo. Napis jest konturem, a nie tekstem, więc nie zależy od czcionek
+  w telewizorze.
+- **Karta do udostępniania linku.** Po wklejeniu adresu strony na Facebooka, X-a
+  albo WhatsAppa widać grafikę z logo, nazwą i opisem aplikacji, a nie pusty
+  prostokąt.
+
 ## [2.0.0] — 2026-10-03
 
 ### Dodano

@@ -1,15 +1,22 @@
-<#
+﻿<#
   make-icons.ps1 — generuje ikony i ekrany startowe TeleIPTV (PNG) z jednego wzoru.
 
   Wzór (przestrzeń projektowa 512x512, zgodna z www/icon.svg):
     * tło  : zaokrąglony kwadrat (albo koło) z gradientem #5b8cff -> #8b5cff
-    * glif : biały trójkąt "play" + dwie białe fale (broadcast)
+    * znak : biały telewizor (korpus + podstawka) z ciemnym ekranem,
+             a na ekranie biały napis "IPTV" (kontur Arial Bold)
 
   Wynik:
     www\icon.png (80x80)  oraz  www\largeicon.png (130x130)
+    www\icon.svg i docs\assets\icon.svg   — ten sam znak jako wektor
+    docs\assets\icon.png (512), apple-touch-icon.png (180)
+    docs\assets\og.png (1200x630)         — karta do udostępniania linku
     android\app\src\main\res\mipmap-*\ic_launcher.png
                                    \ic_launcher_round.png
                                    \ic_launcher_foreground.png
+    android\app\src\main\res\drawable-v24\ic_launcher_foreground.xml
+                                   — ten sam znak jako wektor (zapas dla ikony
+                                   adaptacyjnej, gdyby ktoś ją przełączył)
     android\app\src\main\res\drawable*\splash.png   — ekran startowy: tło
                                    #0a0c11 (kolor aplikacji) + ten sam znak
                                    na środku, w rozmiarach, jakich oczekuje
@@ -33,19 +40,22 @@ if (-not $Root) {
 
 Add-Type -AssemblyName System.Drawing
 
-# ---------- geometria glifu (przestrzeń 512, wyśrodkowana wg otoczki) ----------
-$script:Triangle = @(
-  @{ X = 86.0;  Y = 150.0 },
-  @{ X = 250.0; Y = 256.0 },
-  @{ X = 86.0;  Y = 362.0 }
-)
-$script:Waves = @(
-  @{ ChordX = 272.0; Y1 = 176.0; Y2 = 336.0; R = 80.0;  Alpha = 0.62; Stroke = 20.0 },
-  @{ ChordX = 308.0; Y1 = 148.0; Y2 = 364.0; R = 108.0; Alpha = 0.36; Stroke = 20.0 }
-)
+# ---------- geometria znaku (przestrzeń 512, wyśrodkowana wg otoczki) ----------
+# Telewizor: biały korpus, ciemny ekran, napis "IPTV" na ekranie, podstawka.
+# Napis jest rozciągany do szerokości ekranu, więc te liczby trzymaj razem.
+$script:Body = @{ X = 60.0; Y = 112.0; W = 392.0; H = 228.0; R = 26.0 }
+$script:Screen = @{ X = 78.0; Y = 130.0; W = 356.0; H = 192.0; R = 14.0 }
+$script:Neck = @{ X = 232.0; Y = 340.0; W = 48.0; H = 28.0; R = 0.0 }
+$script:Base = @{ X = 176.0; Y = 368.0; W = 160.0; H = 22.0; R = 11.0 }
+$script:Wordmark = @{ Text = 'IPTV'; Width = 296.0; Cx = 256.0; Cy = 226.0 }
+$script:ScreenInk = '#0a0c11'
 $script:ColorA = '#5b8cff'
 $script:ColorB = '#8b5cff'
 $script:CornerRadius = 118.0
+# Czcionka napisu: pierwsza dostępna z listy (na Windows jest Arial). Do SVG
+# trafia gotowy kontur, więc wygląd znaku nie zależy od czcionek odbiorcy.
+$script:FontNames = @('Arial', 'Segoe UI', 'Microsoft Sans Serif', 'Verdana', 'Tahoma')
+$script:FontFamily = $null
 
 # ---------- ekran startowy (splash) ----------
 # Tło splashu to kolor aplikacji (#0a0c11 — ten sam co www/styles.css --bg
@@ -58,13 +68,11 @@ $script:SplashLogo = 0.26
 function Get-GlyphBounds {
   $xs = New-Object System.Collections.Generic.List[double]
   $ys = New-Object System.Collections.Generic.List[double]
-  foreach ($p in $script:Triangle) { $xs.Add($p.X); $ys.Add($p.Y) }
-  foreach ($w in $script:Waves) {
-    $h = $w.Stroke / 2.0
-    $xs.Add($w.ChordX - $h)
-    $xs.Add($w.ChordX + $w.R + $h)
-    $ys.Add($w.Y1 - $h)
-    $ys.Add($w.Y2 + $h)
+  foreach ($s in @($script:Body, $script:Screen, $script:Neck, $script:Base)) {
+    $xs.Add([double]$s.X)
+    $xs.Add([double]$s.X + [double]$s.W)
+    $ys.Add([double]$s.Y)
+    $ys.Add([double]$s.Y + [double]$s.H)
   }
   [pscustomobject]@{
     MinX = ($xs | Measure-Object -Minimum).Minimum
@@ -124,50 +132,123 @@ function New-LogoBitmap {
     $bg.Dispose()
   }
 
-  # ---- trójkąt "play" ----
-  $tri = New-Object System.Collections.Generic.List[System.Drawing.PointF]
-  foreach ($p in $script:Triangle) {
-    $tri.Add((New-Object System.Drawing.PointF(
-      [single](($p.X - $glyphCx) * $scale + $cx),
-      [single](($p.Y - $glyphCy) * $scale + $cy))))
-  }
+  # ---- znak: telewizor (korpus + podstawka), ekran i napis IPTV ----
+  $matrix = New-GlyphMatrix -Scale $scale -Cx $cx -Cy $cy -GlyphCx $glyphCx -GlyphCy $glyphCy
   $whiteBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
-  $g.FillPolygon($whiteBrush, $tri.ToArray())
-  $whiteBrush.Dispose()
+  $inkBrush = New-Object System.Drawing.SolidBrush([System.Drawing.ColorTranslator]::FromHtml($script:ScreenInk))
 
-  # ---- fale "broadcast" (prawa strona) ----
-  $stroke = $script:Waves[0].Stroke * $scale
-  if ($stroke -ge 2.2) {
-    foreach ($w in $script:Waves) {
-      $half = ($w.Y2 - $w.Y1) / 2.0
-      $wcy = ($w.Y1 + $w.Y2) / 2.0
-      $wcx = $w.ChordX - [Math]::Sqrt($w.R * $w.R - $half * $half)
-      $a1 = [Math]::Atan2(($w.Y1 - $wcy), ($w.ChordX - $wcx))
-      $a2 = [Math]::Atan2(($w.Y2 - $wcy), ($w.ChordX - $wcx))
-      $col = [System.Drawing.Color]::FromArgb([int][Math]::Round(255 * $w.Alpha), 255, 255, 255)
-      $pen = New-Object System.Drawing.Pen($col, [single]($w.Stroke * $scale))
-      $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
-      $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-      $curve = New-Object System.Collections.Generic.List[System.Drawing.PointF]
-      $n = 40
-      for ($i = 0; $i -le $n; $i++) {
-        $ang = $a1 + ($a2 - $a1) * ($i / [double]$n)
-        $px = $wcx + $w.R * [Math]::Cos($ang)
-        $py = $wcy + $w.R * [Math]::Sin($ang)
-        $curve.Add((New-Object System.Drawing.PointF(
-          [single](($px - $glyphCx) * $scale + $cx),
-          [single](($py - $glyphCy) * $scale + $cy))))
-      }
-      $wavePath = New-Object System.Drawing.Drawing2D.GraphicsPath
-      $wavePath.AddCurve($curve.ToArray())
-      $g.DrawPath($pen, $wavePath)
-      $pen.Dispose()
-      $wavePath.Dispose()
-    }
+  foreach ($shape in @($script:Body, $script:Neck, $script:Base)) {
+    $part = New-ShapePath -Shape $shape
+    $part.Transform($matrix)
+    $g.FillPath($whiteBrush, $part)
+    $part.Dispose()
   }
+
+  $screenPath = New-ShapePath -Shape $script:Screen
+  $screenPath.Transform($matrix)
+  $g.FillPath($inkBrush, $screenPath)
+  $screenPath.Dispose()
+
+  $wordPath = New-WordmarkPath
+  if ($wordPath) {
+    $wordPath.Transform($matrix)
+    $g.FillPath($whiteBrush, $wordPath)
+    $wordPath.Dispose()
+  }
+
+  $whiteBrush.Dispose()
+  $inkBrush.Dispose()
+  $matrix.Dispose()
+
 
   $g.Dispose()
   return $bmp
+}
+
+# ---------- napis "IPTV" (wspólny dla PNG i SVG) ----------
+
+# Liczby do SVG zapisujemy z kropką dziesiętną niezależnie od ustawień
+# systemu (polski Excel to przecinek, a SVG wymaga kropki).
+function Format-Num {
+  param([double]$Value)
+  return ([Math]::Round($Value, 2)).ToString('0.##', [System.Globalization.CultureInfo]::InvariantCulture)
+}
+
+# Pierwsza czcionka z listy, jaka jest w systemie - bez tego AddString rzuca
+# wyjątkiem na maszynie bez Arialu.
+function Get-IconFontFamily {
+  if ($script:FontFamily) { return $script:FontFamily }
+  foreach ($name in $script:FontNames) {
+    try {
+      $script:FontFamily = New-Object System.Drawing.FontFamily($name)
+      return $script:FontFamily
+    } catch { }
+  }
+  $script:FontFamily = [System.Drawing.FontFamily]::GenericSansSerif
+  return $script:FontFamily
+}
+
+# Napis rysujemy raz w rozmiarze 100, mierzymy otoczkę i rozciągamy do
+# zadanej szerokości. Dzięki temu PNG i SVG korzystają z tego samego kształtu.
+function New-WordmarkPath {
+  $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+  $origin = New-Object System.Drawing.PointF([single]0, [single]0)
+  $path.AddString(
+    $script:Wordmark.Text,
+    (Get-IconFontFamily),
+    [int][System.Drawing.FontStyle]::Bold,
+    [single]100.0,
+    $origin,
+    [System.Drawing.StringFormat]::GenericTypographic)
+  $box = $path.GetBounds()
+  if ($box.Width -le 0) { return $path }
+  $scale = [double]($script:Wordmark.Width / $box.Width)
+  $c0x = $box.X + $box.Width / 2.0
+  $c0y = $box.Y + $box.Height / 2.0
+  $m = New-ScaleMatrix -Scale $scale `
+    -OffsetX ($script:Wordmark.Cx - $c0x * $scale) `
+    -OffsetY ($script:Wordmark.Cy - $c0y * $scale)
+  $path.Transform($m)
+  $m.Dispose()
+  return $path
+}
+
+# Przeskalowanie i przesunięcie zapisane wprost przez elementy macierzy
+# (GDI+: m11, m12, m21, m22, dx, dy, czyli x' = x*s + dx). Kolejność wywołań
+# Translate/Scale w GDI+ nakłada się na punkty od końca i łatwo się pomylić.
+function New-ScaleMatrix {
+  param([double]$Scale, [double]$OffsetX, [double]$OffsetY)
+  return (New-Object System.Drawing.Drawing2D.Matrix([single]$Scale, [single]0, [single]0, [single]$Scale, [single]$OffsetX, [single]$OffsetY))
+}
+
+# Przejście z przestrzeni znaku (512) na bitmapę: wyśrodkuj wg otoczki,
+# przeskaluj i przesuń na środek obrazka.
+function New-GlyphMatrix {
+  param([double]$Scale, [double]$Cx, [double]$Cy, [double]$GlyphCx, [double]$GlyphCy)
+  return (New-ScaleMatrix -Scale $Scale `
+    -OffsetX ($Cx - $GlyphCx * $Scale) `
+    -OffsetY ($Cy - $GlyphCy * $Scale))
+}
+
+# Prostokąt (opcjonalnie z zaokrąglonymi rogami) w przestrzeni znaku.
+function New-ShapePath {
+  param([hashtable]$Shape)
+  $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+  $x = [single]$Shape.X
+  $y = [single]$Shape.Y
+  $w = [single]$Shape.W
+  $h = [single]$Shape.H
+  if ([double]$Shape.R -le 0) {
+    $path.AddRectangle((New-Object System.Drawing.RectangleF($x, $y, $w, $h)))
+    return $path
+  }
+  $d = [single]([double]$Shape.R * 2.0)
+  $path.AddArc($x, $y, $d, $d, 180, 90)
+  $path.AddArc([single]($x + $w - $d), $y, $d, $d, 270, 90)
+  $path.AddArc([single]($x + $w - $d), [single]($y + $h - $d), $d, $d, 0, 90)
+  $path.AddArc($x, [single]($y + $h - $d), $d, $d, 90, 90)
+  $path.CloseFigure()
+  return $path
 }
 
 function Save-Logo {
@@ -225,9 +306,224 @@ function Save-Splash {
   Write-Host ("  {0,-52} {1,4}px  {2}" -f $Path.Replace($Root + '\', ''), "${Width}x${Height}", 'splash')
 }
 
+# ---------- ten sam znak jako SVG (www/icon.svg, docs/assets/icon.svg) ----------
+
+# Kontur dowolnej ścieżki jako dane SVG i android:pathData (M/L/C + Z). GDI+
+# trzyma krzywe sześcienne, więc przenosimy je bez spłaszczania — i SVG, i
+# wektor Androida są ostre w każdej skali.
+function Get-PathData {
+  param([System.Drawing.Drawing2D.GraphicsPath]$Path)
+  $sb = New-Object System.Text.StringBuilder
+  if ($Path) {
+    $pts = $Path.PathPoints
+    $types = $Path.PathTypes
+    $i = 0
+    while ($i -lt $types.Length) {
+      $kind = $types[$i] -band 0x07
+      $closed = ($types[$i] -band 0x80) -ne 0
+      if ($kind -eq 3 -and ($i + 2) -lt $types.Length) {
+        $p1 = $pts[$i]
+        $p2 = $pts[$i + 1]
+        $p3 = $pts[$i + 2]
+        [void]$sb.Append('C' + (Format-Num $p1.X) + ' ' + (Format-Num $p1.Y) + ' ' +
+          (Format-Num $p2.X) + ' ' + (Format-Num $p2.Y) + ' ' +
+          (Format-Num $p3.X) + ' ' + (Format-Num $p3.Y))
+        if (($types[$i + 2] -band 0x80) -ne 0) { $closed = $true }
+        $i += 3
+      } else {
+        $cmd = 'L'
+        if ($kind -eq 0) { $cmd = 'M' }
+        [void]$sb.Append($cmd + (Format-Num $pts[$i].X) + ' ' + (Format-Num $pts[$i].Y))
+        $i++
+      }
+      if ($closed) { [void]$sb.Append('Z') }
+    }
+  }
+  return $sb.ToString()
+}
+
+function Get-WordmarkPathData {
+  $path = New-WordmarkPath
+  $data = ''
+  if ($path) {
+    $data = Get-PathData -Path $path
+    $path.Dispose()
+  }
+  return $data
+}
+
+function Format-SvgRect {
+  param([hashtable]$Shape, [string]$Fill)
+  $rx = ''
+  if ([double]$Shape.R -gt 0) { $rx = ' rx="' + (Format-Num ([double]$Shape.R)) + '"' }
+  return '  <rect x="' + (Format-Num ([double]$Shape.X)) + '" y="' + (Format-Num ([double]$Shape.Y)) +
+    '" width="' + (Format-Num ([double]$Shape.W)) + '" height="' + (Format-Num ([double]$Shape.H)) + '"' +
+    $rx + ' fill="' + $Fill + '"/>'
+}
+
+function Get-IconSvg {
+  $lines = New-Object System.Collections.Generic.List[string]
+  $lines.Add('<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="TeleIPTV">')
+  $lines.Add('  <title>TeleIPTV</title>')
+  $lines.Add('  <desc>Biały telewizor z napisem IPTV na ekranie</desc>')
+  $lines.Add('  <defs>')
+  $lines.Add('    <linearGradient id="tvbg" x1="0" y1="0" x2="1" y2="1">')
+  $lines.Add('      <stop offset="0" stop-color="' + $script:ColorA + '"/>')
+  $lines.Add('      <stop offset="1" stop-color="' + $script:ColorB + '"/>')
+  $lines.Add('    </linearGradient>')
+  $lines.Add('  </defs>')
+  $lines.Add('  <rect width="512" height="512" rx="' + (Format-Num $script:CornerRadius) + '" fill="url(#tvbg)"/>')
+  foreach ($shape in @($script:Body, $script:Neck, $script:Base)) {
+    $lines.Add((Format-SvgRect -Shape $shape -Fill '#ffffff'))
+  }
+  $lines.Add((Format-SvgRect -Shape $script:Screen -Fill $script:ScreenInk))
+  $lines.Add('  <path d="' + (Get-WordmarkPathData) + '" fill="#ffffff"/>')
+  $lines.Add('</svg>')
+  return (($lines -join "`n") + "`n")
+}
+
+# Tekst zapisujemy bez BOM i z końcami linii LF - tak lubią przeglądarki,
+# a Gradle czyta XML i tak.
+function Save-TextFile {
+  param([string]$Path, [string]$Text, [string]$Kind = 'svg')
+  $dir = Split-Path -Parent $Path
+  if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+  [System.IO.File]::WriteAllText($Path, $Text, (New-Object System.Text.UTF8Encoding($false)))
+  Write-Host ("  {0,-52} {1,4}    {2}" -f $Path.Replace($Root + '\', ''), '', $Kind)
+}
+
+# ---------- karta do udostępniania linku (Open Graph, 1200x630) ----------
+function New-ShareCardBitmap {
+  param([int]$Width = 1200, [int]$Height = 630)
+
+  $bmp = New-Object System.Drawing.Bitmap($Width, $Height, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+  $g = [System.Drawing.Graphics]::FromImage($bmp)
+  $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+  $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+  $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
+
+  $rect = New-Object System.Drawing.RectangleF(0, 0, $Width, $Height)
+  $bgBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
+    $rect,
+    [System.Drawing.ColorTranslator]::FromHtml('#1a2340'),
+    [System.Drawing.ColorTranslator]::FromHtml($script:SplashBg),
+    [single]60.0)
+  $g.FillRectangle($bgBrush, $rect)
+  $bgBrush.Dispose()
+
+  $logoSize = 300
+  $logo = New-LogoBitmap -Size $logoSize -Mode 'tile'
+  $g.DrawImageUnscaled($logo, [int](($Width - $logoSize) / 2), 64)
+  $logo.Dispose()
+
+  $fmt = New-Object System.Drawing.StringFormat
+  $fmt.Alignment = [System.Drawing.StringAlignment]::Center
+  $fmt.LineAlignment = [System.Drawing.StringAlignment]::Center
+
+  $family = Get-IconFontFamily
+  $titleFont = New-Object System.Drawing.Font($family, [single]96, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
+  $subFont = New-Object System.Drawing.Font($family, [single]32, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
+  $smallFont = New-Object System.Drawing.Font($family, [single]26, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
+  $white = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
+  $sub = New-Object System.Drawing.SolidBrush([System.Drawing.ColorTranslator]::FromHtml('#a8b8d8'))
+  $small = New-Object System.Drawing.SolidBrush([System.Drawing.ColorTranslator]::FromHtml('#6f7d9c'))
+
+  $g.DrawString('TeleIPTV', $titleFont, $white, (New-Object System.Drawing.RectangleF(0, 380, $Width, 100)), $fmt)
+  $g.DrawString('Odtwarzacz IPTV na LG webOS, Android TV i Fire TV', $subFont, $sub, (New-Object System.Drawing.RectangleF(0, 486, $Width, 40)), $fmt)
+  $g.DrawString('M3U i Xtream Codes · EPG/XMLTV · catch-up · ulubione · pilot', $smallFont, $small, (New-Object System.Drawing.RectangleF(0, 528, $Width, 40)), $fmt)
+
+  $white.Dispose()
+  $sub.Dispose()
+  $small.Dispose()
+  $titleFont.Dispose()
+  $subFont.Dispose()
+  $smallFont.Dispose()
+  $fmt.Dispose()
+  $g.Dispose()
+  return $bmp
+}
+
+function Save-ShareCard {
+  param([string]$Path, [int]$Width, [int]$Height)
+  $dir = Split-Path -Parent $Path
+  if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+  $bmp = New-ShareCardBitmap -Width $Width -Height $Height
+  $bmp.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
+  $bmp.Dispose()
+  Write-Host ("  {0,-52} {1,4}px  {2}" -f $Path.Replace($Root + '\', ''), "${Width}x${Height}", 'og')
+}
+
+# ---------- ikona adaptacyjna Androida: wektor pierwszego planu ----------
+# mipmap-anydpi-v26/ic_launcher*.xml składa ikonę z drawable/ic_launcher_background
+# (gradient z szablonu) i @mipmap/ic_launcher_foreground (PNG z tego generatora).
+# drawable-v24/ic_launcher_foreground.xml to zapasowy wektor — rysujemy go z tego
+# samego znaku, żeby w repozytorium nie został stary glif z trójkątem "play".
+function Get-AndroidForegroundXml {
+  $view = 108.0
+  $scale = (0.52 * $view) / [double]$script:Body.W
+  $box = Get-GlyphBounds
+  $glyphCx = ($box.MinX + $box.MaxX) / 2.0
+  $glyphCy = ($box.MinY + $box.MaxY) / 2.0
+  $m = New-ScaleMatrix -Scale $scale `
+    -OffsetX ($view / 2.0 - $glyphCx * $scale) `
+    -OffsetY ($view / 2.0 - $glyphCy * $scale)
+
+  $parts = New-Object System.Collections.Generic.List[string]
+  foreach ($spec in @(
+      @{ Shape = $script:Body; Fill = '#FFFFFF' },
+      @{ Shape = $script:Neck; Fill = '#FFFFFF' },
+      @{ Shape = $script:Base; Fill = '#FFFFFF' },
+      @{ Shape = $script:Screen; Fill = $script:ScreenInk })) {
+    $shapePath = New-ShapePath -Shape $spec.Shape
+    $shapePath.Transform($m)
+    [void]$parts.Add('    <path android:fillColor="' + $spec.Fill.ToUpper() +
+      '" android:pathData="' + (Get-PathData -Path $shapePath) + '" />')
+    $shapePath.Dispose()
+  }
+  $wordPath = New-WordmarkPath
+  if ($wordPath) {
+    $wordPath.Transform($m)
+    [void]$parts.Add('    <path android:fillColor="#FFFFFF" android:pathData="' +
+      (Get-PathData -Path $wordPath) + '" />')
+    $wordPath.Dispose()
+  }
+  $m.Dispose()
+
+  $lines = New-Object System.Collections.Generic.List[string]
+  $lines.Add('<?xml version="1.0" encoding="utf-8"?>')
+  $lines.Add('<!-- TeleIPTV: biały telewizor z napisem IPTV. Plik generuje')
+  $lines.Add('     scripts/make-icons.ps1 - nie edytuj ręcznie. Ikona adaptacyjna')
+  $lines.Add('     (mipmap-anydpi-v26) korzysta z @mipmap/ic_launcher_foreground,')
+  $lines.Add('     więc ten wektor jest tylko zapasem na wypadek zmiany motywu. -->')
+  $lines.Add('<vector xmlns:android="http://schemas.android.com/apk/res/android"')
+  $lines.Add('    android:width="108dp"')
+  $lines.Add('    android:height="108dp"')
+  $lines.Add('    android:viewportWidth="108"')
+  $lines.Add('    android:viewportHeight="108">')
+  foreach ($part in $parts) { $lines.Add($part) }
+  $lines.Add('</vector>')
+  return (($lines -join "`n") + "`n")
+}
+
 Write-Host "TeleIPTV - generowanie ikon i ekranów startowych w $Root"
 Save-Logo -Path (Join-Path $Root 'www\icon.png')      -Size 80  -Mode tile
 Save-Logo -Path (Join-Path $Root 'www\largeicon.png') -Size 130 -Mode tile
+
+# Ten sam znak jako wektor: do aplikacji (manifest webOS) i na stronę.
+$svg = Get-IconSvg
+foreach ($svgRel in @('www\icon.svg', 'docs\assets\icon.svg')) {
+  Save-TextFile -Path (Join-Path $Root $svgRel) -Text $svg
+}
+
+# Obrazki strony: favicon w PNG (Safari i iOS nie biorą SVG) i karta do
+# udostępniania linku (Facebook, X, WhatsApp SVG też odrzucają).
+Save-Logo -Path (Join-Path $Root 'docs\assets\icon.png')             -Size 512 -Mode tile
+Save-Logo -Path (Join-Path $Root 'docs\assets\apple-touch-icon.png') -Size 180 -Mode tile
+Save-ShareCard -Path (Join-Path $Root 'docs\assets\og.png') -Width 1200 -Height 630
+
+# Wektor pierwszego planu ikony adaptacyjnej (zapas dla mipmap-anydpi-v26).
+Save-TextFile -Path (Join-Path $Root 'android\app\src\main\res\drawable-v24\ic_launcher_foreground.xml') `
+  -Text (Get-AndroidForegroundXml) -Kind 'xml'
 
 $resRoot = Join-Path $Root 'android\app\src\main\res'
 $density = @(

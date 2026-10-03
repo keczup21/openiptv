@@ -288,7 +288,7 @@ TeleIPTV/
 ├─ scripts/
 │  ├─ build-webos.ps1       www/ + webos-service/ → .ipk
 │  ├─ build-android.ps1     www/ → .apk (Capacitor + Gradle)
-│  ├─ make-icons.ps1        ikony i ekrany startowe PNG z jednego wzoru
+│  ├─ make-icons.ps1        znak TeleIPTV: ikony PNG, splash, icon.svg, og.png
 │  ├─ test-*.js             testy bez telewizora (npm test)
 │  └─ publish.ps1           commit + push, opcjonalnie z tagiem i wydaniem (-Release)
 ├─ capacitor.config.json    appId: pl.openiptv.player, webDir: www
@@ -360,6 +360,11 @@ Oba skrypty mają parametr `-OutDir`, którym można wskazać inny folder docelo
   — ekran startowy to tło `#0a0c11` z logo TeleIPTV na środku; obrazki
   w `res\drawable*\splash.png` generuje `scripts/make-icons.ps1`, żeby start
   pokazywał ten sam znak co ikona aplikacji (`npm run test:splash` tego pilnuje)
+- ikony aplikacji: `mipmap-*\ic_launcher*.png` (zwykła, okrągła i pierwszy plan
+  ikony adaptacyjnej) oraz `drawable-v24/ic_launcher_foreground.xml` — ten sam
+  znak jako wektor — generuje `scripts/make-icons.ps1`. Ikona adaptacyjna
+  (`mipmap-anydpi-v26/ic_launcher.xml`) składa gradient
+  `drawable/ic_launcher_background.xml` z PNG-iem pierwszego planu
 - plugin `FilePlugin` (`OpenIptvFiles`) — wybór plików M3U/EPG dla telewizorów bez
   systemowego okna wyboru plików; rejestrowany w `MainActivity` obok
   `UpdatePlugin` (`registerPlugin`), a uprawnienie `READ_EXTERNAL_STORAGE` ma
@@ -381,7 +386,14 @@ Strona jest przygotowana pod wyszukiwarki:
   (`SoftwareApplication`) i pytania z sekcji **Najczęstsze pytania**
   (`FAQPage`) — Google może pokazać je w wynikach,
 - `docs/robots.txt` i `docs/sitemap.xml` zapraszają roboty i wskazują mapę
-  strony.
+  strony,
+- obrazki strony (`docs/assets/icon.svg`, `icon.png`, `apple-touch-icon.png`
+  i `og.png` — karta 1200×630 do udostępniania linku na Facebooku, X czy
+  WhatsAppie) powstają w `scripts/make-icons.ps1` razem z ikonami aplikacji,
+  więc i na stronie, i w sklepie jest ten sam znak: biały telewizor z napisem
+  **IPTV** na ekranie. SVG jest wektorowy (kontur napisu, nie czcionka
+  odbiorcy), a `og.png`/`icon.png` to PNG, bo serwisy społecznościowe nie
+  czytają SVG.
 
 Żeby strona była widoczna w Google, po stronie GitHuba trzeba jeszcze:
 

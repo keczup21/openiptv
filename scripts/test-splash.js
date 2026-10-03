@@ -184,19 +184,28 @@ EXPECTED.forEach(function (entry) {
     Math.abs(cx - wantW / 2) <= 2 && Math.abs(cy - wantH / 2) <= 2,
     cx + "," + cy + " vs " + wantW / 2 + "," + wantH / 2);
 
-  const center = pixel(img, Math.floor(img.width / 2), Math.floor(img.height / 2));
-  const spread = Math.max(
-    Math.abs(center[0] - bg[0]), Math.abs(center[1] - bg[1]), Math.abs(center[2] - bg[2]));
-  check(label + ": srodek to kolor znaku, nie tla", spread > TOL,
-    hex(center[0], center[1], center[2]));
+  /* Srodek znaku wypada na ekranie telewizora, a ekran ma kolor tla
+     aplikacji - sam srodkowy piksel nic by nie powiedzial. Patrzymy wiec
+     na maly kwadrat wokol srodka i liczymy jasne piksele napisu IPTV. */
+  const r = Math.max(2, Math.round(Math.min(wantW, wantH) * 0.03));
+  const mx = Math.floor(img.width / 2), my = Math.floor(img.height / 2);
+  let bright = 0;
+  for (let y = my - r; y <= my + r; y++) {
+    for (let x = mx - r; x <= mx + r; x++) {
+      const c = pixel(img, x, y);
+      if (c[0] > 150 && c[1] > 150 && c[2] > 150) bright++;
+    }
+  }
+  check(label + ": w srodku widac bialy napis znaku", bright >= 8, bright + " jasnych pikseli");
 
   const line = "File = '" + entry[0].split("/").join("\\") + "'; W = " + wantW + "; H = " + wantH;
   check(label + ": make-icons.ps1 generuje ten plik", gen.indexOf(line) > 0, line);
 });
 
 /* --- ikona i splash pochodza z jednego generatora ------------------------ */
-check("generator rysuje znak z tego samego wzoru co ikona",
-  gen.indexOf("$script:Triangle") > 0 && gen.indexOf("function New-LogoBitmap") > 0);
+check("generator rysuje znak z tego samego wzoru co ikona (telewizor + napis IPTV)",
+  gen.indexOf("$script:Body") > 0 && gen.indexOf("$script:Wordmark") > 0 &&
+  gen.indexOf("function New-LogoBitmap") > 0 && gen.indexOf("function New-WordmarkPath") > 0);
 check("generator ma udzial znaku ($script:SplashLogo = " + LOGO + ")",
   gen.indexOf("$script:SplashLogo = " + LOGO) > 0);
 
