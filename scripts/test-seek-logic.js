@@ -464,6 +464,30 @@ check("krok z ustawien (30 s) trafia do wpisu na pasku",
   h.api.state.seekSize === 30 && h.api.seekNotice() === "seek_back",
   JSON.stringify({ s: h.api.state.seekSize }));
 
+/* kilka nacisniec pod rzad (tak przewija sie pilotem) to jeden wpis o sumie */
+h = harness({ isArchive: true, duration: 600, currentTime: 300, program: { start: NOW - 600000, end: NOW, title: "P", timeshift: true } });
+h.api.seekBy(1); h.api.seekBy(1); h.api.seekBy(1); h.api.seekBy(1); h.api.seekBy(1);
+check("piec skokow do przodu: jeden wpis o pieciu krokach (50 s)",
+  h.video.currentTime === 350 && h.api.state.seekSize === 50 && h.api.seekNotice() === "seek_forward",
+  JSON.stringify({ t: h.video.currentTime, s: h.api.state.seekSize, note: h.api.seekNotice() }));
+
+h.api.seekBy(-1);
+check("zmiana kierunku zaczyna liczenie od nowa",
+  h.api.state.seekSize === 10 && h.api.seekNotice() === "seek_back",
+  JSON.stringify({ s: h.api.state.seekSize, note: h.api.seekNotice() }));
+
+h.api.state.seekAt = NOW - 7000;
+h.api.seekBy(-1);
+check("przerwa dluzsza niz wpis na pasku: liczenie od nowa",
+  h.api.state.seekSize === 10 && h.api.seekNotice() === "seek_back",
+  JSON.stringify({ s: h.api.state.seekSize }));
+
+h = harness({ isArchive: false, duration: Infinity, epg: { title: "Wiadomosci" } });
+h.api.seekBy(-1); h.api.seekBy(-1); h.api.seekBy(-1);
+check("trzy cofniecia pod rzad na kanale na zywo: 30 s w jednym wpisie",
+  h.calls.play.length === 3 && h.api.state.seekSize === 30 && h.api.seekNotice() === "seek_back",
+  JSON.stringify({ play: h.calls.play.length, s: h.api.state.seekSize }));
+
 h = harness({ isArchive: true, duration: 3600, currentTime: 4, program: { start: NOW - 7200000, end: NOW - 3600000, title: "Stary" } });
 h.api.seekBy(-1);
 check("przy krawedzi nagrania skok jest mniejszy od kroku i tak tez jest opisany",

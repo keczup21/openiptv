@@ -17,6 +17,15 @@ z numerem opisuje akapit wyżej). Opis wydania na GitHubie powstaje z tego wpisu
 `npm run notes` (`scripts/release-notes.js`) bierze z changeloga tylko sekcję
 wydawanej wersji.
 
+## [1.21.6] — 2026-10-03
+
+### Naprawiono
+- **Kolejne naciśnięcia przewijania sumują się w jednym wpisie.** Pięć razy
+  `⏩` pod rząd pokazuje na pasku „Przesunięto o +50 s”, a `⏪` — „Cofnięto
+  o 50 s”, zamiast pięć razy opisywać ten sam krok z ustawień. Skok w tę samą
+  stronę dolicza się, dopóki wpis jest jeszcze na pasku; zmiana kierunku albo
+  dłuższa przerwa zaczyna liczenie od nowa.
+
 ## [1.21.5] — 2026-10-03
 
 ### Naprawiono

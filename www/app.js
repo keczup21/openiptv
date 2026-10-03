@@ -21,7 +21,7 @@
      był natychmiastowy i nie przepisywał za każdym razem megabajtów danych. */
   var BLOBS_KEY = "openiptvBlobs";
   var BLOB_FIELDS = ["playlistFileText", "epgFileText", "playlistFileName", "epgFileName"];
-  var APP_VERSION = "1.21.5";
+  var APP_VERSION = "1.21.6";
   var SCHEMA_VERSION = 4;
 
   /* „Ostatnio oglądane”: kanał trafia na listę po 10 s oglądania,
@@ -3690,14 +3690,23 @@
      Po skoku w archiwum dekoder musi donieść obraz na nową pozycję i zgłasza
      wtedy „waiting” — identycznie jak przy wczytywaniu strumienia od zera, więc
      pasek pisał „Ładowanie strumienia…”. Przez chwilę po skoku pamiętamy więc
-     kierunek i krok i to nimi opisujemy oczekiwanie na obraz. */
+     kierunek i krok i to nimi opisujemy oczekiwanie na obraz. Skoki w tę samą
+     stronę doliczają się do jednego wpisu, bo tak się je robi pilotem: kilka
+     naciśnięć pod rząd to jeden skok o kilka kroków. */
 
   var SEEK_GRACE = 6000;
 
   function markSeek(direction, seconds) {
-    state.seekAt = Date.now();
+    /* Kolejne naciśnięcia pilota sumujemy: pięć ⏩ pod rząd to „Przesunięto
+       o +50 s”, a nie pięć razy „o +10 s”. Skok w tę samą stronę dolicza się,
+       dopóki poprzedni wpis jest jeszcze na pasku (czyli przez SEEK_GRACE od
+       ostatniego skoku); zmiana kierunku albo przerwa zaczyna liczenie od nowa. */
+    var now = Date.now();
+    var same = state.seekAt && state.seekDirection === direction &&
+      now - state.seekAt <= SEEK_GRACE;
+    state.seekSize = (same ? state.seekSize : 0) + seconds;
+    state.seekAt = now;
     state.seekDirection = direction;
-    state.seekSize = seconds;
     refreshSeekNotice();
   }
 

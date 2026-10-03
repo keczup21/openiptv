@@ -836,6 +836,10 @@ check("komunikat o wczytywaniu nazywa silnik, a nie stan obrazu (LIVE)",
   src.indexOf("function engineName(engine)") > 0 &&
   src.indexOf('engine_native: "natywnie"') > 0 &&
   src.indexOf('showPlayerError(t("osd_buffering") + " (" + engineName(state.engine) + ")");') > 0);
+check("kolejne nacisniecia pilota sumuja sie w jednym wpisie",
+  src.indexOf("var same = state.seekAt && state.seekDirection === direction &&") > 0 &&
+  src.indexOf("state.seekSize = (same ? state.seekSize : 0) + seconds;") > 0 &&
+  src.indexOf("now - state.seekAt <= SEEK_GRACE;") > 0);
 check("pasek odtwarzacza odswieza wpis razem z reszta wskazan",
   src.indexOf("updateOsdProgress();\n    refreshSeekNotice();") > 0);
 
